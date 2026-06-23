@@ -1,0 +1,119 @@
+// Lightbase · Traçabilité de fabrication
+// Schéma de production — voir README pour la configuration de la base.
+// learn more: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+/// Résultat d'un test du banc PAN 003.
+enum TestResult {
+  accept
+  refus
+}
+
+/// Opérateur sélectionnable aux postes (chaîne « qui »).
+model Operator {
+  id     String  @id @default(cuid())
+  name   String  @unique
+  active Boolean @default(true)
+  order  Int     @default(0)
+
+  @@map("operators")
+}
+
+/// Lot de production : un PO + un projet, créé à l'étiquetage.
+model Batch {
+  id        String   @id @default(cuid())
+  po        String?
+  projet    String
+  reference String
+  sub       String?
+  createdBy String?
+  createdAt DateTime @default(now())
+
+  units Unit[]
+
+  @@map("batches")
+}
+
+/// Livraison regroupant des unités prêtes à emballer.
+model Delivery {
+  id     String   @id // identifiant humain, ex. LIV-2026-001
+  client String?
+  date   DateTime @default(now())
+  closed Boolean  @default(false)
+
+  units Unit[]
+
+  @@map("deliveries")
+}
+
+/// Unité tracée à travers la chaîne montage → test → vérification → emballage.
+/// Le statut est DÉRIVÉ de ces champs (voir src/lib/status.ts), pas stocké.
+model Unit {
+  id           String   @id @default(cuid())
+  serie        String
+  projet       String
+  reference    String
+  po           String?
+  dessin       String?
+  sub          String?
+  dateCreation DateTime @default(now())
+
+  batch   Batch?  @relation(fields: [batchId], references: [id])
+  batchId String?
+
+  delivery   Delivery? @relation(fields: [deliveryId], references: [id])
+  deliveryId String?
+
+  // Étape 1 — Étiquette
+  etiquettePar      String?
+  etiquetteDate     DateTime?
+  etiquetteImprimee Boolean   @default(false)
+
+  // Étape 2 — Montage
+  montagePar  String?
+  montageDate DateTime?
+
+  // Étape 3 — Test (banc PAN 003)
+  testPar  String?
+  testDate DateTime?
+  testDiel TestResult?
+  testPol  TestResult?
+  testEff  TestResult?
+
+  // Étape 4 — Vérification
+  verificationPar  String?
+  verificationDate DateTime?
+
+  // Non-conformité (cause, disposition)
+  nc String?
+
+  @@index([projet, reference])
+  @@index([batchId])
+  @@index([deliveryId])
+  @@map("units")
+}
+
+/// Valeurs par défaut globales (singleton, id = 1).
+model Settings {
+  id   Int    @id @default(1)
+  sub  String @default("ST-4471")
+  proj String @default("24-3095")
+
+  @@map("settings")
+}
+
+/// Gabarit d'étiquette (singleton, id = 1). Stocké en JSON.
+model LabelTemplate {
+  id   Int  @id @default(1)
+  data Json
+
+  @@map("label_template")
+}

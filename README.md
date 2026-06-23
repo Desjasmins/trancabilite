@@ -1,36 +1,90 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Lightbase · Traçabilité de fabrication
 
-## Getting Started
+Application fullstack de traçabilité de production de sous-assemblages, alignée sur
+la traçabilité **ISO 9001** (§7.5, §8.5.2, §8.7). Portée depuis un prototype HTML
+unique vers une application **Next.js + PostgreSQL** persistante.
 
-First, run the development server:
+## Stack
+
+| Couche       | Choix                                            |
+| ------------ | ------------------------------------------------ |
+| Framework    | Next.js 16 (App Router, Turbopack, React 19)     |
+| UI           | shadcn/ui + Tailwind CSS 4 (thème sombre ambre)  |
+| Base         | PostgreSQL via Prisma 7 (driver adapter `pg`)    |
+| Validation   | Zod 4 (toutes les entrées des Server Actions)    |
+| Persistance  | Server Actions (`src/app/actions.ts`)            |
+| i18n         | FR / EN (dictionnaire `src/lib/i18n.ts`)         |
+| Codes        | `qrcode` (QR) + `jsbarcode` (CODE128) + ZPL      |
+
+## Démarrage
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+pnpm install
+
+# 1) Connexion base de données
+cp .env.example .env        # puis renseignez DATABASE_URL
+
+# 2) Schéma + données de démo
+pnpm db:push                # crée les tables
+pnpm db:seed                # 7 unités, 2 lots, 1 livraison, 6 opérateurs
+
+# 3) Lancer
+pnpm dev                    # http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+> Tant que `DATABASE_URL` n'est pas configurée, l'application affiche un écran
+> d'aide à la connexion plutôt qu'une erreur.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### Scripts
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+| Script             | Rôle                                        |
+| ------------------ | ------------------------------------------- |
+| `pnpm dev`         | Serveur de développement                    |
+| `pnpm build`       | Build de production                         |
+| `pnpm db:push`     | Applique le schéma Prisma à la base         |
+| `pnpm db:migrate`  | Crée/applique une migration versionnée      |
+| `pnpm db:seed`     | Charge les données de démonstration         |
+| `pnpm db:studio`   | Explorateur de base Prisma Studio           |
 
-## Learn More
+## Fonctionnalités
 
-To learn more about Next.js, take a look at the following resources:
+### 🏭 Atelier (opérateurs) — flux 5 postes
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+`Étiquettes → Montage → Test → Vérification → Emballage`, avec blocage des
+non-conformités (statut `rejet`).
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- **Étiquettes** — création de lot (PO, projet, réf, quantité, S.N. de départ) +
+  impression des étiquettes.
+- **Montage / Test / Vérification** — scan (lecteur code-barres / clavier) +
+  confirmation par opérateur. Le **Test** (banc PAN 003) enregistre diélectrique,
+  polarité et effort de raccord avec note de non-conformité.
+- **Séparation des tâches** — avertissement si le vérificateur = le monteur.
+- **Emballage** — création/reprise de livraison + scan des unités prêtes.
 
-## Deploy on Vercel
+### 🗄️ Bureau (gestion) — 5 onglets
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+- **Registre** — base complète, recherche, filtre par statut, panneau de détail.
+- **Lots** — regroupement par lot, compteurs de statut, réimpression.
+- **Rapports** — bons de livraison imprimables avec signatures.
+- **Étiquette** — éditeur WYSIWYG drag-and-drop (formats Brother/Dymo/Zebra/Avery,
+  QR/code-barres, impression dialogue / Chrome kiosk / **ZPL direct via WebUSB**).
+- **Paramètres** — défauts + opérateurs + statistiques.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Transversal : **i18n FR/EN**, mode client (lecture seule).
+
+## Modèle de données (`prisma/schema.prisma`)
+
+- **Unit** — cœur de la traçabilité. Le **statut est dérivé** des champs d'étapes
+  (voir `src/lib/status.ts`), jamais stocké.
+- **Batch** — lot de production (PO + projet).
+- **Delivery** — livraison (`LIV-AAAA-NNN`).
+- **Operator**, **Settings**, **LabelTemplate** — opérateurs, défauts, gabarit.
+
+## Notes
+
+Trois capacités restent **côté navigateur** (ce sont des API client, pas des
+limites du serveur) :
+
+1. Impression **ZPL via WebUSB** vers Zebra (Chrome/Edge, contexte sécurisé).
+2. `window.print()` pour les étiquettes et rapports.
+3. Éditeur d'étiquette drag-and-drop + génération QR/code-barres.
