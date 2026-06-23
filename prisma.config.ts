@@ -9,6 +9,9 @@ export default defineConfig({
     path: "prisma/migrations",
   },
   datasource: {
-    url: process.env["DATABASE_URL"],
+    // La CLI Prisma (db push, migrate, seed, studio) utilise la connexion directe
+    // (DIRECT_URL, port 5432) quand elle existe — meilleure pour les migrations que
+    // le pooler transaction (6543). Repli sur DATABASE_URL si DIRECT_URL absent.
+    url: process.env["DIRECT_URL"] || process.env["DATABASE_URL"],
   },
 });

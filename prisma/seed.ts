@@ -3,7 +3,9 @@ import { PrismaClient, type TestResult } from "../src/generated/prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { defaultTemplate } from "../src/lib/label";
 
-const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
+const adapter = new PrismaPg({
+  connectionString: process.env.DIRECT_URL || process.env.DATABASE_URL,
+});
 const prisma = new PrismaClient({ adapter });
 
 const OPS = ["A. Tremblay", "M. Côté", "J. Bélanger", "S. Roy", "P. Gagnon", "L. Dubé"];
