@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { useApp } from "./app-context";
 import { LabelView } from "./label-view";
@@ -13,10 +13,11 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import { saveSettingsAction, markPrintedAction } from "@/app/actions";
+import { saveSettingsAction, markPrintedAction, createBatchAction } from "@/app/actions";
 import { statut, byId } from "@/lib/status";
 import { modele } from "@/lib/label";
 import { printLabels, printSlip } from "@/lib/print";
+import { exportRegistryXlsx } from "@/lib/export";
 import type { UnitDTO, StatusKey } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -47,7 +48,7 @@ export function Bureau() {
 
 /* ===================== Registre ===================== */
 function ViewReg() {
-  const { units, ui, setUi, t } = useApp();
+  const { units, ui, setUi, t, lang } = useApp();
   const q = ui.query.toLowerCase();
   const list = units
     .filter((u) => {
@@ -82,6 +83,13 @@ function ViewReg() {
             </option>
           ))}
         </select>
+        <button
+          onClick={() => exportRegistryXlsx(list, t, lang)}
+          disabled={!list.length}
+          className="rounded-[9px] border border-line bg-transparent px-[13px] py-2.5 text-sm font-bold hover:border-amber hover:text-amber disabled:opacity-50"
+        >
+          {t.exportXlsx}
+        </button>
       </div>
 
       <div className="overflow-auto rounded-xl border border-line">
@@ -294,13 +302,15 @@ function RelayCell({
 
 /* ===================== Lots ===================== */
 function ViewLots() {
-  const { units, settings, template, ui, run, t, pending } = useApp();
+  const { units, settings, template, routes, ui, run, t, pending } = useApp();
   const poRef = useRef<HTMLInputElement>(null);
   const projRef = useRef<HTMLInputElement>(null);
   const refRef = useRef<HTMLInputElement>(null);
   const qtyRef = useRef<HTMLInputElement>(null);
   const startRef = useRef<HTMLInputElement>(null);
   const subRef = useRef<HTMLInputElement>(null);
+  const defaultRouteId = routes.find((r) => r.isDefault)?.id ?? routes[0]?.id ?? "";
+  const [routeId, setRouteId] = useState(defaultRouteId);
 
   const groups: Record<string, UnitDTO[]> = {};
   units.forEach((u) => {
@@ -312,8 +322,9 @@ function ViewLots() {
     .sort((a, b) => (b.arr[0].dateCreation || "").localeCompare(a.arr[0].dateCreation || ""));
 
   const createLot = async () => {
-    const { createBatchAction } = await import("@/app/actions");
-    const res = await run(
+    // Création seulement — pas d'impression auto (les étiquettes s'impriment
+    // séparément via « Réimprimer » ou au poste Étiquettes).
+    await run(
       createBatchAction({
         po: poRef.current?.value,
         projet: projRef.current?.value,
@@ -322,14 +333,10 @@ function ViewLots() {
         start: startRef.current?.value,
         sub: subRef.current?.value,
         operator: null,
+        routeId,
       }),
+      t.saved,
     );
-    if (res.ok && res.createdIds) {
-      const fresh = (res.units ?? []).filter((u) => res.createdIds!.includes(u.id));
-      const out = await printLabels(fresh, template, t);
-      if (out.ok) toast.success(out.message);
-      else toast.error(out.message);
-    }
   };
 
   const reprintBatch = async (id: string) => {
@@ -363,6 +370,19 @@ function ViewLots() {
               </Field>
               <Field label={t.startSerial}>
                 <input ref={startRef} type="number" placeholder="auto" className={inputCls + " w-[110px]"} />
+              </Field>
+              <Field label={t.route}>
+                <select
+                  value={routeId}
+                  onChange={(e) => setRouteId(e.target.value)}
+                  className={inputCls + " w-[150px]"}
+                >
+                  {routes.map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.name}
+                    </option>
+                  ))}
+                </select>
               </Field>
               <Field label={t.sub} grow>
                 <input ref={subRef} defaultValue={settings.sub} className={inputCls + " w-full"} />

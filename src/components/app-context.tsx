@@ -14,6 +14,8 @@ import type {
   TestResult,
   StatusKey,
   LabelElementKey,
+  OperationDTO,
+  RouteDTO,
 } from "@/lib/types";
 import type { Dict, Lang } from "@/lib/i18n";
 
@@ -63,6 +65,8 @@ interface AppCtxValue {
   settings: SettingsDTO;
   template: LabelTemplate;
   setTemplate: (t: LabelTemplate) => void;
+  operations: OperationDTO[];
+  routes: RouteDTO[];
   ui: UiState;
   setUi: (partial: Partial<UiState>) => void;
   applyResult: (res: ActionResult) => void;
@@ -135,6 +139,8 @@ export function AppProvider({
         settings,
         template,
         setTemplate,
+        operations: initial.operations,
+        routes: initial.routes,
         ui,
         setUi,
         applyResult,
