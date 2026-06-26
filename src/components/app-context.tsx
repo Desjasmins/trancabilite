@@ -16,6 +16,7 @@ import type {
   LabelElementKey,
   OperationDTO,
   RouteDTO,
+  AuthUser,
 } from "@/lib/types";
 import type { Dict, Lang } from "@/lib/i18n";
 
@@ -75,15 +76,18 @@ interface AppCtxValue {
   lang: Lang;
   setLang: (l: Lang) => void;
   pending: boolean;
+  user: AuthUser | null;
 }
 
 const Ctx = createContext<AppCtxValue | null>(null);
 
 export function AppProvider({
   initial,
+  user,
   children,
 }: {
   initial: Snapshot;
+  user: AuthUser | null;
   children: React.ReactNode;
 }) {
   const { t, lang, setLang } = useLang();
@@ -149,6 +153,7 @@ export function AppProvider({
         lang,
         setLang,
         pending,
+        user,
       }}
     >
       {children}

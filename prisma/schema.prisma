@@ -15,18 +15,21 @@ datasource db {
 }
 
 /// Résultat d'un test du banc PAN 003 (stocké dans TraceEvent.data).
+
 enum TestResult {
   accept
   refus
 }
 
 /// Nature d'une opération de poste.
+
 enum OperationKind {
   STANDARD // confirmation simple (montage, vérification)
   QC // contrôle qualité avec résultat pass/fail (test)
 }
 
 /// Résultat d'un événement de traçabilité.
+
 enum EventResult {
   done // opération standard validée
   pass // contrôle QC réussi
@@ -34,6 +37,7 @@ enum EventResult {
 }
 
 /// Catalogue des types de poste de production (montage, test, vérification, futurs).
+
 model Operation {
   key     String        @id // "montage" | "test" | "verification" | ...
   labelFr String
@@ -47,6 +51,7 @@ model Operation {
 }
 
 /// Gamme de fabrication : séquence ordonnée d'opérations qu'une unité traverse.
+
 model Route {
   id        String  @id @default(cuid())
   name      String  @unique
@@ -59,9 +64,10 @@ model Route {
 }
 
 /// Étape ordonnée d'une gamme.
+
 model RouteStep {
-  id           String @id @default(cuid())
-  route        Route  @relation(fields: [routeId], references: [id], onDelete: Cascade)
+  id           String    @id @default(cuid())
+  route        Route     @relation(fields: [routeId], references: [id], onDelete: Cascade)
   routeId      String
   operation    Operation @relation(fields: [operationKey], references: [key])
   operationKey String
@@ -73,6 +79,7 @@ model RouteStep {
 }
 
 /// Opérateur sélectionnable aux postes (chaîne « qui » — mode kiosque).
+
 model Operator {
   id     String  @id @default(cuid())
   name   String  @unique
@@ -83,6 +90,7 @@ model Operator {
 }
 
 /// Lot de production : un PO + un projet, suit une gamme. Créé à l'étiquetage.
+
 model Batch {
   id        String   @id @default(cuid())
   po        String?
@@ -102,6 +110,7 @@ model Batch {
 }
 
 /// Livraison regroupant des unités prêtes à emballer.
+
 model Delivery {
   id     String   @id // identifiant humain, ex. LIV-2026-001
   client String?
@@ -116,6 +125,7 @@ model Delivery {
 /// Unité tracée le long de sa gamme. L'état (étape courante, blocage) est un
 /// CACHE mis à jour dans la même transaction que l'événement ; la vérité est
 /// le flux de TraceEvent.
+
 model Unit {
   id           String   @id @default(cuid())
   serie        String
@@ -153,6 +163,7 @@ model Unit {
 }
 
 /// Journal d'événements immuable — LE registre de vérité (qui/quand/quoi).
+
 model TraceEvent {
   id           String      @id @default(cuid())
   unit         Unit        @relation(fields: [unitId], references: [id], onDelete: Cascade)
@@ -172,6 +183,7 @@ model TraceEvent {
 }
 
 /// Valeurs par défaut globales (singleton, id = 1).
+
 model Settings {
   id   Int    @id @default(1)
   sub  String @default("ST-4471")
@@ -181,9 +193,78 @@ model Settings {
 }
 
 /// Gabarit d'étiquette (singleton, id = 1). Stocké en JSON.
+
 model LabelTemplate {
   id   Int  @id @default(1)
   data Json
 
   @@map("label_template")
+}
+
+model User {
+  id            String    @id
+  name          String
+  email         String
+  emailVerified Boolean   @default(false)
+  image         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  role          String?
+  banned        Boolean?  @default(false)
+  banReason     String?
+  banExpires    DateTime?
+  sessions      Session[]
+  accounts      Account[]
+
+  @@unique([email])
+  @@map("user")
+}
+
+model Session {
+  id             String   @id
+  expiresAt      DateTime
+  token          String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  ipAddress      String?
+  userAgent      String?
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  impersonatedBy String?
+
+  @@unique([token])
+  @@index([userId])
+  @@map("session")
+}
+
+model Account {
+  id                    String    @id
+  accountId             String
+  providerId            String
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@index([userId])
+  @@map("account")
+}
+
+model Verification {
+  id         String   @id
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([identifier])
+  @@map("verification")
 }

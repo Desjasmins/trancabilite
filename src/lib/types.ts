@@ -107,6 +107,13 @@ export interface LabelTemplate {
   print: { method: PrintMethod; dpi: number };
 }
 
+export interface AuthUser {
+  id: string;
+  name: string;
+  email: string;
+  role: string | null;
+}
+
 export interface Snapshot {
   units: UnitDTO[];
   deliveries: DeliveryDTO[];

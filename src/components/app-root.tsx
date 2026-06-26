@@ -1,9 +1,12 @@
 "use client";
 
 import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { useApp } from "./app-context";
 import { Atelier } from "./atelier";
 import { Bureau } from "./bureau";
+import { LoginGate } from "./login-gate";
+import { signOut } from "@/lib/auth-client";
 import { queueFor } from "@/lib/status";
 import { tryReconnectUSB } from "@/lib/usb";
 import type { StationKey } from "@/lib/types";
@@ -18,12 +21,22 @@ const STATION_ORDER: StationKey[] = [
 ];
 
 export function AppRoot() {
-  const { units, template, ui, setUi, t, lang, setLang } = useApp();
+  const { units, template, ui, setUi, t, lang, setLang, user } = useApp();
+  const router = useRouter();
+
+  const role = user?.role ?? null;
+  const isClientRole = role === "client";
 
   useEffect(() => {
     if ((template.print && template.print.method) === "zpl") void tryReconnectUSB();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Le rôle "client" impose la lecture seule.
+  useEffect(() => {
+    if (isClientRole && !ui.client) setUi({ client: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isClientRole]);
 
   const counts = {
     montage: queueFor(units, "montage").length,
@@ -40,6 +53,12 @@ export function AppRoot() {
     ["set", t.setTitle],
   ];
 
+  const doSignOut = async () => {
+    await signOut();
+    setUi({ client: false, bureauTab: "reg" });
+    router.refresh();
+  };
+
   return (
     <>
       {/* ---- Header ---- */}
@@ -53,7 +72,7 @@ export function AppRoot() {
         </div>
         <div className="flex-1" />
 
-        {ui.mode === "bureau" && (
+        {ui.mode === "bureau" && user && !isClientRole && (
           <label className="flex items-center gap-2 text-xs text-muted-foreground">
             <input
               type="checkbox"
@@ -69,6 +88,18 @@ export function AppRoot() {
             />
             {t.clientLbl}
           </label>
+        )}
+
+        {ui.mode === "bureau" && user && (
+          <span className="flex items-center gap-2 text-xs text-muted-foreground">
+            <span className="font-bold text-foreground">{user.name}</span>
+            <button
+              onClick={doSignOut}
+              className="rounded-full border border-line px-3 py-1 font-bold hover:border-amber hover:text-amber"
+            >
+              {t.signOut}
+            </button>
+          </span>
         )}
 
         <Toggle
@@ -116,7 +147,7 @@ export function AppRoot() {
               </NavBtn>
             ))}
           </>
-        ) : (
+        ) : user ? (
           bureauTabs.map(([k, label]) => (
             <NavBtn
               key={k}
@@ -126,12 +157,12 @@ export function AppRoot() {
               {label}
             </NavBtn>
           ))
-        )}
+        ) : null}
       </nav>
 
       {/* ---- Main ---- */}
       <main className="mx-auto w-full max-w-[1120px] px-[18px] pb-24 pt-[22px]">
-        {ui.mode === "atelier" ? <Atelier /> : <Bureau />}
+        {ui.mode === "atelier" ? <Atelier /> : user ? <Bureau /> : <LoginGate />}
       </main>
     </>
   );
