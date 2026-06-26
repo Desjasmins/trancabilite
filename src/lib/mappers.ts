@@ -1,11 +1,31 @@
-import type { Unit, Delivery } from "@/generated/prisma/client";
-import type { UnitDTO, DeliveryDTO, TestResult } from "./types";
+import type { Unit, Delivery, TraceEvent, Operation, Route, RouteStep } from "@/generated/prisma/client";
+import type { UnitDTO, DeliveryDTO, TestResult, OperationDTO, RouteDTO } from "./types";
 
 const iso = (d: Date | null | undefined) => (d ? d.toISOString() : null);
-const tr = (v: string | null | undefined): TestResult =>
+const tr = (v: unknown): TestResult =>
   v === "accept" || v === "refus" ? v : null;
 
-export function toUnitDTO(u: Unit): UnitDTO {
+type UnitWithEvents = Unit & { events: TraceEvent[] };
+
+/** Dernier événement d'une opération donnée (le journal est append-only). */
+function lastEvent(events: TraceEvent[], key: string): TraceEvent | undefined {
+  let found: TraceEvent | undefined;
+  for (const e of events) {
+    if (e.operationKey === key) {
+      if (!found || e.createdAt > found.createdAt) found = e;
+    }
+  }
+  return found;
+}
+
+/** Reconstruit le DTO (forme historique) en repliant les événements. */
+export function toUnitDTO(u: UnitWithEvents): UnitDTO {
+  const events = u.events ?? [];
+  const montage = lastEvent(events, "montage");
+  const test = lastEvent(events, "test");
+  const verification = lastEvent(events, "verification");
+  const testData = (test?.data as { diel?: unknown; pol?: unknown; eff?: unknown } | null) ?? {};
+
   return {
     id: u.id,
     serie: u.serie,
@@ -22,16 +42,19 @@ export function toUnitDTO(u: Unit): UnitDTO {
       date: iso(u.etiquetteDate),
       imprimee: u.etiquetteImprimee,
     },
-    montage: { par: u.montagePar ?? null, date: iso(u.montageDate) },
+    montage: { par: montage?.operator ?? null, date: iso(montage?.createdAt) },
     test: {
-      par: u.testPar ?? null,
-      date: iso(u.testDate),
-      diel: tr(u.testDiel),
-      pol: tr(u.testPol),
-      eff: tr(u.testEff),
+      par: test?.operator ?? null,
+      date: iso(test?.createdAt),
+      diel: tr(testData.diel),
+      pol: tr(testData.pol),
+      eff: tr(testData.eff),
     },
-    verification: { par: u.verificationPar ?? null, date: iso(u.verificationDate) },
+    verification: { par: verification?.operator ?? null, date: iso(verification?.createdAt) },
     nc: u.nc ?? "",
+    currentOperationKey: u.currentOperationKey ?? null,
+    blocked: u.blocked,
+    version: u.version,
   };
 }
 
@@ -41,5 +64,18 @@ export function toDeliveryDTO(d: Delivery): DeliveryDTO {
     client: d.client ?? "",
     date: d.date.toISOString(),
     closed: d.closed,
+  };
+}
+
+export function toOperationDTO(o: Operation): OperationDTO {
+  return { key: o.key, labelFr: o.labelFr, labelEn: o.labelEn, kind: o.kind };
+}
+
+export function toRouteDTO(r: Route & { steps: RouteStep[] }): RouteDTO {
+  return {
+    id: r.id,
+    name: r.name,
+    isDefault: r.isDefault,
+    steps: [...r.steps].sort((a, b) => a.position - b.position).map((s) => s.operationKey),
   };
 }

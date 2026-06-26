@@ -1,30 +1,27 @@
 import type { UnitDTO, StatusKey, StationKey, DeliveryDTO } from "./types";
 import { pad } from "./label";
 
-/** Statut dérivé d'une unité (machine à états du flux de production). */
+/**
+ * Statut dérivé d'une unité, à partir du cache d'état (currentOperationKey/blocked)
+ * lui-même dérivé du journal d'événements. Route-aware : une unité dont la gamme
+ * ne contient pas « test » ne s'arrête jamais au poste Test.
+ */
 export function statut(u: UnitDTO): StatusKey {
-  const r = [u.test.diel, u.test.pol, u.test.eff];
-  if (r.includes("refus")) return "rejet";
-  if (u.livraison && u.verification.par) return "livre";
-  if (u.verification.par) return "pret";
-  if (u.test.par && r.every((x) => x === "accept")) return "verification";
-  if (u.montage.par) return "test";
-  return "montage";
+  if (u.blocked) return "rejet";
+  if (u.currentOperationKey === null) {
+    return u.livraison ? "livre" : "pret";
+  }
+  // En cours : le statut EST l'opération courante (montage/test/verification/…).
+  return u.currentOperationKey as StatusKey;
 }
 
-const STATION_TO_STATUS: Record<string, StatusKey> = {
-  montage: "montage",
-  test: "test",
-  verification: "verification",
-  emballage: "pret",
-};
-
-/** File d'attente d'un poste, triée par date de création. */
+/** File d'attente d'un poste. */
 export function queueFor(units: UnitDTO[], st: StationKey): UnitDTO[] {
-  const target = STATION_TO_STATUS[st];
-  return units
-    .filter((u) => statut(u) === target)
-    .sort((a, b) => a.dateCreation.localeCompare(b.dateCreation));
+  const list =
+    st === "emballage"
+      ? units.filter((u) => !u.blocked && u.currentOperationKey === null && !u.livraison)
+      : units.filter((u) => !u.blocked && u.currentOperationKey === st);
+  return list.sort((a, b) => a.dateCreation.localeCompare(b.dateCreation));
 }
 
 /** Prochain numéro de série pour un couple projet/référence. */

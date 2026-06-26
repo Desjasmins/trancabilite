@@ -10,6 +10,7 @@ export const createBatchSchema = z.object({
   start: z.string().trim().optional(),
   sub: z.string().trim().max(60).optional().default(""),
   operator: z.string().trim().max(80).nullable().optional(),
+  routeId: z.string().trim().optional(), // gamme de fabrication ; défaut = gamme par défaut
 });
 export type CreateBatchInput = z.infer<typeof createBatchSchema>;
 

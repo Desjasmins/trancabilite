@@ -40,6 +40,25 @@ export interface UnitDTO {
   };
   verification: { par: string | null; date: string | null };
   nc: string;
+
+  // Cache d'état (dérivé du journal d'événements)
+  currentOperationKey: string | null; // prochaine opération attendue ; null = prêt à emballer
+  blocked: boolean;
+  version: number;
+}
+
+export interface OperationDTO {
+  key: string;
+  labelFr: string;
+  labelEn: string;
+  kind: "STANDARD" | "QC";
+}
+
+export interface RouteDTO {
+  id: string;
+  name: string;
+  isDefault: boolean;
+  steps: string[]; // clés d'opérations dans l'ordre
 }
 
 export interface DeliveryDTO {
@@ -93,4 +112,6 @@ export interface Snapshot {
   deliveries: DeliveryDTO[];
   settings: SettingsDTO;
   template: LabelTemplate;
+  operations: OperationDTO[];
+  routes: RouteDTO[];
 }

@@ -1,6 +1,7 @@
 "use server";
 
 import { prisma } from "@/lib/db";
+import { EventResult } from "@/generated/prisma/client";
 import {
   loadUnits,
   loadDeliveries,
@@ -8,6 +9,7 @@ import {
   loadTemplate,
 } from "@/lib/queries";
 import { nextSerial, statut } from "@/lib/status";
+import { nextOp } from "@/lib/process";
 import { pad } from "@/lib/label";
 import {
   createBatchSchema,
@@ -42,11 +44,83 @@ function fail(error: string): ActionResult {
   return { ok: false, error };
 }
 
-/** Crée un lot + N unités, retourne les unités fraîches et les ids créés. */
+/**
+ * Transition transactionnelle : insère un événement immuable et avance la gamme.
+ * Garde (étape attendue), idempotence (re-scan) et verrou optimiste (version).
+ */
+async function recordOperation(
+  unitId: string,
+  operationKey: string,
+  opts: {
+    operator: string;
+    result: EventResult;
+    data?: unknown;
+    note?: string;
+  },
+): Promise<void> {
+  await prisma.$transaction(async (tx) => {
+    const unit = await tx.unit.findUnique({
+      where: { id: unitId },
+      include: { batch: { include: { route: { include: { steps: true } } } } },
+    });
+    if (!unit) throw new Error("Unité introuvable");
+    if (unit.blocked) throw new Error("Unité bloquée (non conforme)");
+    if (unit.currentOperationKey !== operationKey)
+      throw new Error("Cette unité n'est pas à cette étape");
+
+    const steps =
+      unit.batch?.route?.steps
+        ?.slice()
+        .sort((a, b) => a.position - b.position)
+        .map((s) => s.operationKey) ?? [];
+
+    const failed = opts.result === EventResult.fail;
+    const next = failed ? unit.currentOperationKey : nextOp(steps, operationKey);
+
+    await tx.traceEvent.create({
+      data: {
+        unitId,
+        operationKey,
+        result: opts.result,
+        operator: opts.operator,
+        data: (opts.data as object) ?? undefined,
+        note: opts.note || null,
+      },
+    });
+
+    const upd = await tx.unit.updateMany({
+      where: { id: unitId, version: unit.version },
+      data: {
+        currentOperationKey: failed ? unit.currentOperationKey : next,
+        blocked: failed,
+        nc: failed ? opts.note || null : unit.nc,
+        version: { increment: 1 },
+      },
+    });
+    if (upd.count === 0) throw new Error("Conflit de concurrence, réessayez");
+  });
+}
+
+/** Crée un lot (selon une gamme) + N unités. Retourne les unités fraîches. */
 export async function createBatchAction(input: unknown): Promise<ActionResult> {
   const parsed = createBatchSchema.safeParse(input);
   if (!parsed.success) return fail(parsed.error.issues[0]?.message ?? "Entrée invalide");
   const d = parsed.data;
+
+  // Gamme : celle demandée, sinon la gamme par défaut, sinon n'importe laquelle.
+  const route =
+    (d.routeId
+      ? await prisma.route.findUnique({ where: { id: d.routeId }, include: { steps: true } })
+      : null) ??
+    (await prisma.route.findFirst({
+      where: { isDefault: true },
+      include: { steps: true },
+    })) ??
+    (await prisma.route.findFirst({ include: { steps: true } }));
+
+  const steps =
+    route?.steps?.slice().sort((a, b) => a.position - b.position).map((s) => s.operationKey) ?? [];
+  const firstOpKey = steps[0] ?? "montage";
 
   const current = await loadUnits();
   let n = nextSerial(current, d.projet, d.reference, d.start);
@@ -58,29 +132,33 @@ export async function createBatchAction(input: unknown): Promise<ActionResult> {
       reference: d.reference,
       sub: d.sub || null,
       createdBy: d.operator || null,
+      routeId: route?.id ?? null,
     },
   });
 
   const createdIds: string[] = [];
-  await prisma.$transaction(
-    Array.from({ length: d.qty }).map(() => {
-      const serie = pad(n++);
-      return prisma.unit.create({
-        data: {
-          serie,
-          projet: d.projet,
-          reference: d.reference,
-          po: d.po || null,
-          sub: d.sub || null,
-          batchId: batch.id,
-          etiquettePar: d.operator || null,
-          etiquetteDate: new Date(),
-          etiquetteImprimee: false,
-        },
-        select: { id: true },
-      });
-    }),
-  ).then((rows) => rows.forEach((r) => createdIds.push(r.id)));
+  await prisma
+    .$transaction(
+      Array.from({ length: d.qty }).map(() => {
+        const serie = pad(n++);
+        return prisma.unit.create({
+          data: {
+            serie,
+            projet: d.projet,
+            reference: d.reference,
+            po: d.po || null,
+            sub: d.sub || null,
+            batchId: batch.id,
+            etiquettePar: d.operator || null,
+            etiquetteDate: new Date(),
+            etiquetteImprimee: false,
+            currentOperationKey: firstOpKey,
+          },
+          select: { id: true },
+        });
+      }),
+    )
+    .then((rows) => rows.forEach((r) => createdIds.push(r.id)));
 
   return { ok: true, units: await loadUnits(), createdIds };
 }
@@ -89,50 +167,42 @@ export async function confirmMontageAction(input: unknown): Promise<ActionResult
   const parsed = confirmMontageSchema.safeParse(input);
   if (!parsed.success) return fail(parsed.error.issues[0]?.message ?? "Entrée invalide");
   const { unitId, operator } = parsed.data;
-
-  const u = await prisma.unit.findUnique({ where: { id: unitId } });
-  if (!u) return fail("Unité introuvable");
-  await prisma.unit.update({
-    where: { id: unitId },
-    data: { montagePar: operator, montageDate: new Date() },
-  });
-  return { ok: true, units: await loadUnits() };
+  try {
+    await recordOperation(unitId, "montage", { operator, result: EventResult.done });
+    return { ok: true, units: await loadUnits() };
+  } catch (e) {
+    return fail(e instanceof Error ? e.message : "Erreur");
+  }
 }
 
 export async function confirmTestAction(input: unknown): Promise<ActionResult> {
   const parsed = confirmTestSchema.safeParse(input);
   if (!parsed.success) return fail(parsed.error.issues[0]?.message ?? "Entrée invalide");
   const { unitId, operator, diel, pol, eff, nc } = parsed.data;
-
-  const u = await prisma.unit.findUnique({ where: { id: unitId } });
-  if (!u) return fail("Unité introuvable");
   const rejected = [diel, pol, eff].includes("refus");
-  await prisma.unit.update({
-    where: { id: unitId },
-    data: {
-      testPar: operator,
-      testDate: new Date(),
-      testDiel: diel,
-      testPol: pol,
-      testEff: eff,
-      nc: rejected ? nc || null : null,
-    },
-  });
-  return { ok: true, units: await loadUnits() };
+  try {
+    await recordOperation(unitId, "test", {
+      operator,
+      result: rejected ? EventResult.fail : EventResult.pass,
+      data: { diel, pol, eff },
+      note: rejected ? nc : "",
+    });
+    return { ok: true, units: await loadUnits() };
+  } catch (e) {
+    return fail(e instanceof Error ? e.message : "Erreur");
+  }
 }
 
 export async function confirmVerifAction(input: unknown): Promise<ActionResult> {
   const parsed = confirmVerifSchema.safeParse(input);
   if (!parsed.success) return fail(parsed.error.issues[0]?.message ?? "Entrée invalide");
   const { unitId, operator } = parsed.data;
-
-  const u = await prisma.unit.findUnique({ where: { id: unitId } });
-  if (!u) return fail("Unité introuvable");
-  await prisma.unit.update({
-    where: { id: unitId },
-    data: { verificationPar: operator, verificationDate: new Date() },
-  });
-  return { ok: true, units: await loadUnits() };
+  try {
+    await recordOperation(unitId, "verification", { operator, result: EventResult.done });
+    return { ok: true, units: await loadUnits() };
+  } catch (e) {
+    return fail(e instanceof Error ? e.message : "Erreur");
+  }
 }
 
 export async function packUnitAction(input: unknown): Promise<ActionResult> {
@@ -148,10 +218,7 @@ export async function packUnitAction(input: unknown): Promise<ActionResult> {
   const delivery = await prisma.delivery.findUnique({ where: { id: deliveryId } });
   if (!delivery) return fail("Livraison introuvable");
 
-  await prisma.unit.update({
-    where: { id: unitId },
-    data: { deliveryId },
-  });
+  await prisma.unit.update({ where: { id: unitId }, data: { deliveryId } });
   return { ok: true, units: await loadUnits() };
 }
 
@@ -162,9 +229,7 @@ export async function createDeliveryAction(input: unknown): Promise<ActionResult
 
   const existing = await prisma.delivery.findUnique({ where: { id } });
   if (!existing) {
-    await prisma.delivery.create({
-      data: { id, client: client || null, closed: false },
-    });
+    await prisma.delivery.create({ data: { id, client: client || null, closed: false } });
   }
   return { ok: true, deliveries: await loadDeliveries() };
 }
@@ -172,10 +237,7 @@ export async function createDeliveryAction(input: unknown): Promise<ActionResult
 export async function closeDeliveryAction(input: unknown): Promise<ActionResult> {
   const parsed = closeDeliverySchema.safeParse(input);
   if (!parsed.success) return fail(parsed.error.issues[0]?.message ?? "Entrée invalide");
-  await prisma.delivery.update({
-    where: { id: parsed.data.id },
-    data: { closed: true },
-  });
+  await prisma.delivery.update({ where: { id: parsed.data.id }, data: { closed: true } });
   return { ok: true, deliveries: await loadDeliveries() };
 }
 
@@ -211,7 +273,6 @@ export async function saveTemplateAction(input: unknown): Promise<ActionResult> 
   return { ok: true, template: await loadTemplate() };
 }
 
-/** Marque des étiquettes comme imprimées (trace l'impression). */
 export async function markPrintedAction(input: unknown): Promise<ActionResult> {
   const parsed = reprintPrintedSchema.safeParse(input);
   if (!parsed.success) return fail("Entrée invalide");

@@ -1,11 +1,22 @@
 import "server-only";
 import { prisma } from "./db";
-import { toUnitDTO, toDeliveryDTO } from "./mappers";
+import { toUnitDTO, toDeliveryDTO, toOperationDTO, toRouteDTO } from "./mappers";
 import { defaultTemplate, normalizeTemplate } from "./label";
-import type { Snapshot, UnitDTO, DeliveryDTO, SettingsDTO, LabelTemplate } from "./types";
+import type {
+  Snapshot,
+  UnitDTO,
+  DeliveryDTO,
+  SettingsDTO,
+  LabelTemplate,
+  OperationDTO,
+  RouteDTO,
+} from "./types";
 
 export async function loadUnits(): Promise<UnitDTO[]> {
-  const rows = await prisma.unit.findMany({ orderBy: { dateCreation: "asc" } });
+  const rows = await prisma.unit.findMany({
+    include: { events: true },
+    orderBy: { dateCreation: "asc" },
+  });
   return rows.map(toUnitDTO);
 }
 
@@ -32,12 +43,24 @@ export async function loadTemplate(): Promise<LabelTemplate> {
   return normalizeTemplate(row.data as unknown as LabelTemplate);
 }
 
+export async function loadOperations(): Promise<OperationDTO[]> {
+  const rows = await prisma.operation.findMany();
+  return rows.map(toOperationDTO);
+}
+
+export async function loadRoutes(): Promise<RouteDTO[]> {
+  const rows = await prisma.route.findMany({ include: { steps: true }, orderBy: { name: "asc" } });
+  return rows.map(toRouteDTO);
+}
+
 export async function loadSnapshot(): Promise<Snapshot> {
-  const [units, deliveries, settings, template] = await Promise.all([
+  const [units, deliveries, settings, template, operations, routes] = await Promise.all([
     loadUnits(),
     loadDeliveries(),
     loadSettings(),
     loadTemplate(),
+    loadOperations(),
+    loadRoutes(),
   ]);
-  return { units, deliveries, settings, template };
+  return { units, deliveries, settings, template, operations, routes };
 }

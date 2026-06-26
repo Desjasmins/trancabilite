@@ -57,6 +57,9 @@ export function LabelEditor() {
     test: { par: null, date: null, diel: null, pol: null, eff: null },
     verification: { par: null, date: null },
     nc: "",
+    currentOperationKey: "montage",
+    blocked: false,
+    version: 0,
   };
 
   const commit = (next: LabelTemplate) => {

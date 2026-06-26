@@ -1,5 +1,8 @@
 // Lightbase · Traçabilité de fabrication
-// Schéma de production — voir README pour la configuration de la base.
+// Schéma de production — voir README / PLAN.md.
+// Socle : gammes de fabrication (routage par donnée) + journal d'événements
+// immuable (traçabilité ISO + concurrence sûre). L'état d'une unité se DÉRIVE
+// des événements ; des colonnes-cache accélèrent les files d'attente.
 // learn more: https://pris.ly/d/prisma-schema
 
 generator client {
@@ -11,13 +14,65 @@ datasource db {
   provider = "postgresql"
 }
 
-/// Résultat d'un test du banc PAN 003.
+/// Résultat d'un test du banc PAN 003 (stocké dans TraceEvent.data).
 enum TestResult {
   accept
   refus
 }
 
-/// Opérateur sélectionnable aux postes (chaîne « qui »).
+/// Nature d'une opération de poste.
+enum OperationKind {
+  STANDARD // confirmation simple (montage, vérification)
+  QC // contrôle qualité avec résultat pass/fail (test)
+}
+
+/// Résultat d'un événement de traçabilité.
+enum EventResult {
+  done // opération standard validée
+  pass // contrôle QC réussi
+  fail // contrôle QC échoué -> non-conformité
+}
+
+/// Catalogue des types de poste de production (montage, test, vérification, futurs).
+model Operation {
+  key     String        @id // "montage" | "test" | "verification" | ...
+  labelFr String
+  labelEn String
+  kind    OperationKind @default(STANDARD)
+
+  steps  RouteStep[]
+  events TraceEvent[]
+
+  @@map("operations")
+}
+
+/// Gamme de fabrication : séquence ordonnée d'opérations qu'une unité traverse.
+model Route {
+  id        String  @id @default(cuid())
+  name      String  @unique
+  isDefault Boolean @default(false)
+
+  steps   RouteStep[]
+  batches Batch[]
+
+  @@map("routes")
+}
+
+/// Étape ordonnée d'une gamme.
+model RouteStep {
+  id           String @id @default(cuid())
+  route        Route  @relation(fields: [routeId], references: [id], onDelete: Cascade)
+  routeId      String
+  operation    Operation @relation(fields: [operationKey], references: [key])
+  operationKey String
+  position     Int
+
+  @@unique([routeId, position])
+  @@index([routeId])
+  @@map("route_steps")
+}
+
+/// Opérateur sélectionnable aux postes (chaîne « qui » — mode kiosque).
 model Operator {
   id     String  @id @default(cuid())
   name   String  @unique
@@ -27,7 +82,7 @@ model Operator {
   @@map("operators")
 }
 
-/// Lot de production : un PO + un projet, créé à l'étiquetage.
+/// Lot de production : un PO + un projet, suit une gamme. Créé à l'étiquetage.
 model Batch {
   id        String   @id @default(cuid())
   po        String?
@@ -37,8 +92,12 @@ model Batch {
   createdBy String?
   createdAt DateTime @default(now())
 
+  route   Route?  @relation(fields: [routeId], references: [id])
+  routeId String?
+
   units Unit[]
 
+  @@index([routeId])
   @@map("batches")
 }
 
@@ -54,8 +113,9 @@ model Delivery {
   @@map("deliveries")
 }
 
-/// Unité tracée à travers la chaîne montage → test → vérification → emballage.
-/// Le statut est DÉRIVÉ de ces champs (voir src/lib/status.ts), pas stocké.
+/// Unité tracée le long de sa gamme. L'état (étape courante, blocage) est un
+/// CACHE mis à jour dans la même transaction que l'événement ; la vérité est
+/// le flux de TraceEvent.
 model Unit {
   id           String   @id @default(cuid())
   serie        String
@@ -72,33 +132,43 @@ model Unit {
   delivery   Delivery? @relation(fields: [deliveryId], references: [id])
   deliveryId String?
 
-  // Étape 1 — Étiquette
+  // Étiquette (création, posée une fois)
   etiquettePar      String?
   etiquetteDate     DateTime?
   etiquetteImprimee Boolean   @default(false)
 
-  // Étape 2 — Montage
-  montagePar  String?
-  montageDate DateTime?
+  // Cache d'état dérivé des événements
+  currentOperationKey String? // prochaine opération attendue ; null = gamme terminée (prêt à emballer)
+  blocked             Boolean @default(false) // non-conformité (un QC en échec)
+  nc                  String? // cache de la dernière note de non-conformité
+  version             Int     @default(0) // verrou optimiste
 
-  // Étape 3 — Test (banc PAN 003)
-  testPar  String?
-  testDate DateTime?
-  testDiel TestResult?
-  testPol  TestResult?
-  testEff  TestResult?
-
-  // Étape 4 — Vérification
-  verificationPar  String?
-  verificationDate DateTime?
-
-  // Non-conformité (cause, disposition)
-  nc String?
+  events TraceEvent[]
 
   @@index([projet, reference])
   @@index([batchId])
   @@index([deliveryId])
+  @@index([currentOperationKey])
   @@map("units")
+}
+
+/// Journal d'événements immuable — LE registre de vérité (qui/quand/quoi).
+model TraceEvent {
+  id           String      @id @default(cuid())
+  unit         Unit        @relation(fields: [unitId], references: [id], onDelete: Cascade)
+  unitId       String
+  operation    Operation   @relation(fields: [operationKey], references: [key])
+  operationKey String
+  result       EventResult
+  operator     String?
+  stationId    String? // identité du poste (mode kiosque, cf. auth) — null pour l'instant
+  data         Json? // résultats QC : { diel, pol, eff }
+  note         String? // non-conformité
+  createdAt    DateTime    @default(now())
+
+  @@index([unitId])
+  @@index([operationKey])
+  @@map("trace_events")
 }
 
 /// Valeurs par défaut globales (singleton, id = 1).
