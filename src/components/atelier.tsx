@@ -125,17 +125,21 @@ function OpPicker({ station }: { station: StationKey }) {
     <>
       <KBar station={station} />
       <h2 className="mb-4 text-lg font-semibold">{t.whoAreYou}</h2>
-      <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(170px,1fr))]">
-        {settings.ops.map((o) => (
-          <button
-            key={o}
-            onClick={() => setUi({ op: { ...ui.op, [station]: o } })}
-            className="min-h-[78px] rounded-[14px] border border-line bg-panel px-[18px] py-6 text-[18px] font-bold hover:border-amber hover:text-amber"
-          >
-            {o}
-          </button>
-        ))}
-      </div>
+      {settings.ops.length ? (
+        <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(170px,1fr))]">
+          {settings.ops.map((o) => (
+            <button
+              key={o}
+              onClick={() => setUi({ op: { ...ui.op, [station]: o } })}
+              className="min-h-[78px] rounded-[14px] border border-line bg-panel px-[18px] py-6 text-[18px] font-bold hover:border-amber hover:text-amber"
+            >
+              {o}
+            </button>
+          ))}
+        </div>
+      ) : (
+        <EmptyState>{t.noOperatorsHint}</EmptyState>
+      )}
     </>
   );
 }

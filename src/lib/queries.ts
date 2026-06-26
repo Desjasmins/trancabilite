@@ -31,8 +31,8 @@ export async function loadSettings(): Promise<SettingsDTO> {
     prisma.operator.findMany({ where: { active: true }, orderBy: { order: "asc" } }),
   ]);
   return {
-    sub: s?.sub ?? "ST-4471",
-    proj: s?.proj ?? "24-3095",
+    sub: s?.sub ?? "",
+    proj: s?.proj ?? "",
     ops: ops.map((o) => o.name),
   };
 }

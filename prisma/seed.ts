@@ -8,8 +8,6 @@ const adapter = new PrismaPg({
 });
 const prisma = new PrismaClient({ adapter });
 
-const OPS = ["A. Tremblay", "M. Côté", "J. Bélanger", "S. Roy", "P. Gagnon", "L. Dubé"];
-
 async function main() {
   console.log("Seeding (socle propre, sans données de production)…");
 
@@ -59,16 +57,14 @@ async function main() {
     },
   });
 
-  // --- Opérateurs ---
-  await prisma.operator.createMany({
-    data: OPS.map((name, i) => ({ name, order: i, active: true })),
-  });
+  // Aucune personne de démo : la liste d'opérateurs démarre vide.
+  // (À créer dans Bureau → Paramètres par un superviseur/admin.)
 
-  // --- Réglages + gabarit d'étiquette ---
+  // --- Réglages + gabarit d'étiquette (valeurs vierges, pas de démo) ---
   await prisma.settings.upsert({
     where: { id: 1 },
-    create: { id: 1, sub: "ST-4471", proj: "24-3095" },
-    update: { sub: "ST-4471", proj: "24-3095" },
+    create: { id: 1, sub: "", proj: "" },
+    update: { sub: "", proj: "" },
   });
   await prisma.labelTemplate.upsert({
     where: { id: 1 },
@@ -76,7 +72,7 @@ async function main() {
     update: { data: defaultTemplate() as object },
   });
 
-  console.log("Seed terminé : 3 opérations, 2 gammes (Standard, Sans test), 6 opérateurs, réglages + gabarit. Aucune unité/lot/livraison.");
+  console.log("Seed terminé : 3 opérations, 2 gammes (Standard, Sans test), gabarit. Aucune personne, aucun réglage, aucune donnée de production.");
 }
 
 main()
