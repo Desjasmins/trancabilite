@@ -514,7 +514,7 @@ function ViewSet() {
   const { units, settings, ui, run, t, pending } = useApp();
   const subRef = useRef<HTMLInputElement>(null);
   const projRef = useRef<HTMLInputElement>(null);
-  const opsRef = useRef<HTMLTextAreaElement>(null);
+  const [newPerson, setNewPerson] = useState("");
 
   if (ui.client)
     return (
@@ -530,20 +530,32 @@ function ViewSet() {
   units.forEach((u) => c[statut(u)]++);
   const en = c.montage + c.test + c.verification + c.pret;
 
-  const save = async () => {
-    const ops = (opsRef.current?.value || "")
-      .split("\n")
-      .map((s) => s.trim())
-      .filter(Boolean);
-    await run(
+  // Persiste sub/proj/ops ensemble (saveSettings remplace la liste d'opérateurs).
+  const persist = (ops: string[], msg?: string) =>
+    run(
       saveSettingsAction({
-        sub: subRef.current?.value || "",
-        proj: projRef.current?.value || "",
+        sub: subRef.current?.value ?? settings.sub,
+        proj: projRef.current?.value ?? settings.proj,
         ops,
       }),
-      t.saved,
+      msg,
     );
+
+  const saveDefaults = () => persist(settings.ops, t.saved);
+
+  const addPerson = async () => {
+    const name = newPerson.trim();
+    if (!name) return;
+    if (settings.ops.some((o) => o.toLowerCase() === name.toLowerCase())) {
+      toast.error(t.dupPerson);
+      return;
+    }
+    const res = await persist([...settings.ops, name], t.personAdded);
+    if (res.ok) setNewPerson("");
   };
+
+  const removePerson = (name: string) =>
+    persist(settings.ops.filter((o) => o !== name), t.personRemoved);
 
   return (
     <>
@@ -555,33 +567,78 @@ function ViewSet() {
         <Stat n={units.length} l={t.statTotal} />
       </div>
 
-      <div className="flex max-w-[520px] flex-col gap-3.5">
-        <div className="flex flex-wrap gap-2.5">
-          <Field label={t.defSub}>
-            <input ref={subRef} defaultValue={settings.sub} className={inputCls} />
-          </Field>
-          <Field label={t.defProj}>
-            <input ref={projRef} defaultValue={settings.proj} className={inputCls} />
-          </Field>
+      <div className="grid items-start gap-6 [grid-template-columns:1fr_1fr] max-[680px]:[grid-template-columns:1fr]">
+        {/* Défauts */}
+        <div className="flex flex-col gap-3.5">
+          <div className="flex flex-wrap gap-2.5">
+            <Field label={t.defSub}>
+              <input ref={subRef} defaultValue={settings.sub} className={inputCls} />
+            </Field>
+            <Field label={t.defProj}>
+              <input ref={projRef} defaultValue={settings.proj} className={inputCls} />
+            </Field>
+          </div>
+          <div>
+            <button
+              onClick={saveDefaults}
+              disabled={pending}
+              className="rounded-[9px] bg-amber px-[17px] py-[11px] font-bold text-[#16181a] hover:bg-amber-bright disabled:opacity-60"
+            >
+              {t.save}
+            </button>
+          </div>
         </div>
-        <Field label={t.ops}>
-          <textarea
-            ref={opsRef}
-            rows={7}
-            defaultValue={settings.ops.join("\n")}
-            className={inputCls + " w-full"}
-          />
-        </Field>
+
+        {/* Personnes (opérateurs) */}
         <div>
-          <button
-            onClick={save}
-            disabled={pending}
-            className="rounded-[9px] bg-amber px-[17px] py-[11px] font-bold text-[#16181a] hover:bg-amber-bright disabled:opacity-60"
-          >
-            {t.save}
-          </button>
+          <p className="mb-2 text-xs uppercase tracking-wider text-muted-foreground">
+            {t.operatorsHeading}
+          </p>
+          <div className="mb-2.5 flex gap-2">
+            <input
+              value={newPerson}
+              onChange={(e) => setNewPerson(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  void addPerson();
+                }
+              }}
+              placeholder={t.personName}
+              className={inputCls + " flex-1"}
+            />
+            <button
+              onClick={addPerson}
+              disabled={pending || !newPerson.trim()}
+              className="rounded-[9px] bg-amber px-4 py-2.5 font-bold text-[#16181a] hover:bg-amber-bright disabled:opacity-50"
+            >
+              {t.addPerson}
+            </button>
+          </div>
+          {settings.ops.length ? (
+            <div className="flex flex-col gap-1.5">
+              {settings.ops.map((o) => (
+                <div
+                  key={o}
+                  className="flex items-center justify-between rounded-[10px] border border-line bg-panel px-3.5 py-2.5"
+                >
+                  <span className="font-bold">{o}</span>
+                  <button
+                    onClick={() => removePerson(o)}
+                    disabled={pending}
+                    className="rounded-md border border-line px-2.5 py-1 text-xs font-bold text-muted-foreground hover:border-fail hover:text-fail disabled:opacity-50"
+                  >
+                    {t.removePerson}
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <EmptyState>{t.noPersons}</EmptyState>
+          )}
         </div>
       </div>
+
       <p className="mt-6 border-t border-line pt-4 text-xs leading-relaxed text-faint">
         {t.iso}
       </p>
