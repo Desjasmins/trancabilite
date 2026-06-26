@@ -1,9 +1,10 @@
 "use client";
 
-import { createContext, useContext, useState, useCallback } from "react";
+import { createContext, useContext, useState, useCallback, useEffect } from "react";
 import { toast } from "sonner";
 import { useLang } from "./lang-provider";
-import type { ActionResult } from "@/app/actions";
+import { getLiveDataAction, type ActionResult } from "@/app/actions";
+import { subscribeSync, notifyChange } from "@/lib/realtime";
 import type {
   Snapshot,
   UnitDTO,
@@ -119,6 +120,7 @@ export function AppProvider({
           return res;
         }
         applyResult(res);
+        notifyChange(); // signale aux autres écrans
         if (successMsg) {
           if (bad) toast.error(successMsg);
           else toast.success(successMsg);
@@ -134,6 +136,16 @@ export function AppProvider({
     },
     [applyResult],
   );
+
+  // Synchro temps réel : un autre écran a changé une donnée -> on recharge.
+  useEffect(() => {
+    const unsub = subscribeSync(() => {
+      void getLiveDataAction().then((res) => {
+        if (res.ok) applyResult(res);
+      });
+    });
+    return unsub;
+  }, [applyResult]);
 
   return (
     <Ctx.Provider

@@ -273,6 +273,12 @@ export async function saveTemplateAction(input: unknown): Promise<ActionResult> 
   return { ok: true, template: await loadTemplate() };
 }
 
+/** Recharge les données vivantes (déclenché par la synchro temps réel). */
+export async function getLiveDataAction(): Promise<ActionResult> {
+  const [units, deliveries] = await Promise.all([loadUnits(), loadDeliveries()]);
+  return { ok: true, units, deliveries };
+}
+
 export async function markPrintedAction(input: unknown): Promise<ActionResult> {
   const parsed = reprintPrintedSchema.safeParse(input);
   if (!parsed.success) return fail("Entrée invalide");
