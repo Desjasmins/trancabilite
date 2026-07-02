@@ -13,12 +13,12 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import { saveSettingsAction, markPrintedAction, createBatchAction } from "@/app/actions";
+import { saveSettingsAction, markPrintedAction, createBatchAction, updateBatchAction } from "@/app/actions";
 import { statut, byId } from "@/lib/status";
 import { modele } from "@/lib/label";
 import { printLabels, printSlip } from "@/lib/print";
 import { exportRegistryXlsx } from "@/lib/export";
-import type { UnitDTO, StatusKey } from "@/lib/types";
+import type { UnitDTO, BatchDTO, StatusKey } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 const STATUS_KEYS: StatusKey[] = [
@@ -302,7 +302,7 @@ function RelayCell({
 
 /* ===================== Lots ===================== */
 function ViewLots() {
-  const { units, settings, template, routes, ui, run, t, pending } = useApp();
+  const { units, batches: batchInfos, settings, template, routes, ui, run, t, pending } = useApp();
   const poRef = useRef<HTMLInputElement>(null);
   const projRef = useRef<HTMLInputElement>(null);
   const refRef = useRef<HTMLInputElement>(null);
@@ -311,6 +311,7 @@ function ViewLots() {
   const subRef = useRef<HTMLInputElement>(null);
   const defaultRouteId = routes.find((r) => r.isDefault)?.id ?? routes[0]?.id ?? "";
   const [routeId, setRouteId] = useState(defaultRouteId);
+  const [editId, setEditId] = useState<string | null>(null);
 
   const groups: Record<string, UnitDTO[]> = {};
   units.forEach((u) => {
@@ -409,36 +410,52 @@ function ViewLots() {
               c[s] = (c[s] || 0) + 1;
             });
             const u0 = a[0];
+            const info = batchInfos.find((x) => x.id === b.id) ?? null;
+            const routeName = info ? routes.find((r) => r.id === info.routeId)?.name : null;
             return (
               <div
                 key={b.id}
-                className="grid items-center gap-3.5 rounded-xl border border-line bg-panel px-4 py-3.5 [grid-template-columns:1.4fr_2fr_auto]"
+                className="rounded-xl border border-line bg-panel px-4 py-3.5"
               >
-                <div>
-                  <b className="text-base">{u0.po || t.none}</b>
-                  <br />
-                  <span className="font-mono text-xs text-muted-foreground">
-                    {u0.projet}-{u0.reference} · {a.length} {t.lotUnits} ·{" "}
-                    {u0.etiquette.par || t.createdBy}
-                  </span>
-                </div>
-                <div className="flex flex-wrap gap-1.5">
-                  {STATUS_KEYS.filter((k) => c[k]).map((k) => (
-                    <span key={k} className={`chip chip-${k}`}>
-                      {c[k]} {t.st[k]}
+                <div className="grid items-center gap-3.5 [grid-template-columns:1.4fr_2fr_auto]">
+                  <div>
+                    <b className="text-base">{u0.po || t.none}</b>
+                    <br />
+                    <span className="font-mono text-xs text-muted-foreground">
+                      {u0.projet}-{u0.reference} · {a.length} {t.lotUnits} ·{" "}
+                      {u0.etiquette.par || t.createdBy}
+                      {routeName ? ` · ${t.route} : ${routeName}` : ""}
                     </span>
-                  ))}
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {STATUS_KEYS.filter((k) => c[k]).map((k) => (
+                      <span key={k} className={`chip chip-${k}`}>
+                        {c[k]} {t.st[k]}
+                      </span>
+                    ))}
+                  </div>
+                  <div className="flex gap-2">
+                    {!ui.client && info && (
+                      <button
+                        onClick={() => setEditId(editId === b.id ? null : b.id)}
+                        className="rounded-[9px] border border-line bg-transparent px-3 py-2 text-[13px] font-bold hover:border-amber hover:text-amber"
+                      >
+                        {t.editLot}
+                      </button>
+                    )}
+                    {!ui.client && (
+                      <button
+                        onClick={() => reprintBatch(b.id)}
+                        className="rounded-[9px] border border-line bg-transparent px-3 py-2 text-[13px] font-bold hover:border-amber hover:text-amber"
+                      >
+                        {t.reprintBatch}
+                      </button>
+                    )}
+                  </div>
                 </div>
-                <div>
-                  {!ui.client && (
-                    <button
-                      onClick={() => reprintBatch(b.id)}
-                      className="rounded-[9px] border border-line bg-transparent px-3 py-2 text-[13px] font-bold hover:border-amber hover:text-amber"
-                    >
-                      {t.reprintBatch}
-                    </button>
-                  )}
-                </div>
+                {editId === b.id && info && (
+                  <LotEditForm info={info} onClose={() => setEditId(null)} />
+                )}
               </div>
             );
           })}
@@ -447,6 +464,82 @@ function ViewLots() {
         <EmptyState>{t.noLots}</EmptyState>
       )}
     </>
+  );
+}
+
+/** Formulaire d'édition d'un lot (PO, projet, référence, sous-traitant, gamme). */
+function LotEditForm({ info, onClose }: { info: BatchDTO; onClose: () => void }) {
+  const { routes, run, t, pending } = useApp();
+  const poRef = useRef<HTMLInputElement>(null);
+  const projRef = useRef<HTMLInputElement>(null);
+  const refRef = useRef<HTMLInputElement>(null);
+  const subRef = useRef<HTMLInputElement>(null);
+  const [routeId, setRouteId] = useState(
+    info.routeId || routes.find((r) => r.isDefault)?.id || routes[0]?.id || "",
+  );
+
+  const save = async () => {
+    const res = await run(
+      updateBatchAction({
+        batchId: info.id,
+        po: poRef.current?.value,
+        projet: projRef.current?.value,
+        reference: refRef.current?.value,
+        sub: subRef.current?.value,
+        routeId,
+      }),
+      t.saved,
+    );
+    if (res.ok) onClose();
+  };
+
+  return (
+    <div className="mt-3 border-t border-line pt-3">
+      <p className="m-0 mb-2 text-xs uppercase tracking-wider text-muted-foreground">
+        {t.editLotTitle}
+      </p>
+      <div className="flex flex-wrap items-end gap-2.5">
+        <Field label={t.poField}>
+          <input ref={poRef} defaultValue={info.po} className={inputCls + " w-[150px]"} />
+        </Field>
+        <Field label={t.proj}>
+          <input ref={projRef} defaultValue={info.projet} className={inputCls + " w-[130px]"} />
+        </Field>
+        <Field label={t.ref}>
+          <input ref={refRef} defaultValue={info.reference} className={inputCls + " w-[90px]"} />
+        </Field>
+        <Field label={t.sub}>
+          <input ref={subRef} defaultValue={info.sub} className={inputCls + " w-[150px]"} />
+        </Field>
+        <Field label={t.route}>
+          <select
+            value={routeId}
+            onChange={(e) => setRouteId(e.target.value)}
+            className={inputCls + " w-[150px]"}
+          >
+            {routes.map((r) => (
+              <option key={r.id} value={r.id}>
+                {r.name}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <button
+          onClick={save}
+          disabled={pending}
+          className="self-end rounded-[9px] bg-amber px-[17px] py-[11px] font-bold text-[#16181a] hover:bg-amber-bright disabled:opacity-60"
+        >
+          {t.save}
+        </button>
+        <button
+          onClick={onClose}
+          className="self-end rounded-[9px] border border-line bg-transparent px-[17px] py-[11px] font-bold hover:border-amber hover:text-amber"
+        >
+          {t.cancel}
+        </button>
+      </div>
+      <p className="m-0 mt-2 text-xs text-muted-foreground">{t.editLotRouteHint}</p>
+    </div>
   );
 }
 

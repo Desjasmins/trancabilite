@@ -8,6 +8,7 @@ import { subscribeSync, notifyChange } from "@/lib/realtime";
 import type {
   Snapshot,
   UnitDTO,
+  BatchDTO,
   DeliveryDTO,
   SettingsDTO,
   LabelTemplate,
@@ -63,6 +64,7 @@ const initialUi: UiState = {
 
 interface AppCtxValue {
   units: UnitDTO[];
+  batches: BatchDTO[];
   deliveries: DeliveryDTO[];
   settings: SettingsDTO;
   template: LabelTemplate;
@@ -93,6 +95,7 @@ export function AppProvider({
 }) {
   const { t, lang, setLang } = useLang();
   const [units, setUnits] = useState<UnitDTO[]>(initial.units);
+  const [batches, setBatches] = useState<BatchDTO[]>(initial.batches);
   const [deliveries, setDeliveries] = useState<DeliveryDTO[]>(initial.deliveries);
   const [settings, setSettings] = useState<SettingsDTO>(initial.settings);
   const [template, setTemplate] = useState<LabelTemplate>(initial.template);
@@ -105,6 +108,7 @@ export function AppProvider({
 
   const applyResult = useCallback((res: ActionResult) => {
     if (res.units) setUnits(res.units);
+    if (res.batches) setBatches(res.batches);
     if (res.deliveries) setDeliveries(res.deliveries);
     if (res.settings) setSettings(res.settings);
     if (res.template) setTemplate(res.template);
@@ -151,6 +155,7 @@ export function AppProvider({
     <Ctx.Provider
       value={{
         units,
+        batches,
         deliveries,
         settings,
         template,

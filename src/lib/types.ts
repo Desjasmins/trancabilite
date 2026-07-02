@@ -61,6 +61,17 @@ export interface RouteDTO {
   steps: string[]; // clés d'opérations dans l'ordre
 }
 
+export interface BatchDTO {
+  id: string;
+  po: string;
+  projet: string;
+  reference: string;
+  sub: string;
+  routeId: string; // "" si aucune gamme
+  createdBy: string;
+  createdAt: string; // ISO
+}
+
 export interface DeliveryDTO {
   id: string;
   client: string;
@@ -116,6 +127,7 @@ export interface AuthUser {
 
 export interface Snapshot {
   units: UnitDTO[];
+  batches: BatchDTO[];
   deliveries: DeliveryDTO[];
   settings: SettingsDTO;
   template: LabelTemplate;

@@ -1,10 +1,11 @@
 import "server-only";
 import { prisma } from "./db";
-import { toUnitDTO, toDeliveryDTO, toOperationDTO, toRouteDTO } from "./mappers";
+import { toUnitDTO, toBatchDTO, toDeliveryDTO, toOperationDTO, toRouteDTO } from "./mappers";
 import { defaultTemplate, normalizeTemplate } from "./label";
 import type {
   Snapshot,
   UnitDTO,
+  BatchDTO,
   DeliveryDTO,
   SettingsDTO,
   LabelTemplate,
@@ -18,6 +19,11 @@ export async function loadUnits(): Promise<UnitDTO[]> {
     orderBy: { dateCreation: "asc" },
   });
   return rows.map(toUnitDTO);
+}
+
+export async function loadBatches(): Promise<BatchDTO[]> {
+  const rows = await prisma.batch.findMany({ orderBy: { createdAt: "desc" } });
+  return rows.map(toBatchDTO);
 }
 
 export async function loadDeliveries(): Promise<DeliveryDTO[]> {
@@ -54,13 +60,14 @@ export async function loadRoutes(): Promise<RouteDTO[]> {
 }
 
 export async function loadSnapshot(): Promise<Snapshot> {
-  const [units, deliveries, settings, template, operations, routes] = await Promise.all([
+  const [units, batches, deliveries, settings, template, operations, routes] = await Promise.all([
     loadUnits(),
+    loadBatches(),
     loadDeliveries(),
     loadSettings(),
     loadTemplate(),
     loadOperations(),
     loadRoutes(),
   ]);
-  return { units, deliveries, settings, template, operations, routes };
+  return { units, batches, deliveries, settings, template, operations, routes };
 }

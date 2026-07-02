@@ -14,6 +14,16 @@ export const createBatchSchema = z.object({
 });
 export type CreateBatchInput = z.infer<typeof createBatchSchema>;
 
+export const updateBatchSchema = z.object({
+  batchId: z.string().min(1),
+  po: z.string().trim().max(60).optional().default(""),
+  projet: z.string().trim().min(1, "Projet requis").max(60),
+  reference: z.string().trim().min(1, "Référence requise").max(60),
+  sub: z.string().trim().max(60).optional().default(""),
+  routeId: z.string().trim().min(1, "Gamme requise"),
+});
+export type UpdateBatchInput = z.infer<typeof updateBatchSchema>;
+
 export const confirmMontageSchema = z.object({
   unitId: z.string().min(1),
   operator: z.string().trim().min(1, "Opérateur requis").max(80),

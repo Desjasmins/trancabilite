@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { EventResult } from "@/generated/prisma/client";
 import {
   loadUnits,
+  loadBatches,
   loadDeliveries,
   loadSettings,
   loadTemplate,
@@ -13,6 +14,7 @@ import { nextOp } from "@/lib/process";
 import { pad } from "@/lib/label";
 import {
   createBatchSchema,
+  updateBatchSchema,
   confirmMontageSchema,
   confirmTestSchema,
   confirmVerifSchema,
@@ -25,6 +27,7 @@ import {
 } from "@/lib/schemas";
 import type {
   UnitDTO,
+  BatchDTO,
   DeliveryDTO,
   SettingsDTO,
   LabelTemplate,
@@ -34,6 +37,7 @@ export interface ActionResult {
   ok: boolean;
   error?: string;
   units?: UnitDTO[];
+  batches?: BatchDTO[];
   deliveries?: DeliveryDTO[];
   settings?: SettingsDTO;
   template?: LabelTemplate;
@@ -160,7 +164,80 @@ export async function createBatchAction(input: unknown): Promise<ActionResult> {
     )
     .then((rows) => rows.forEach((r) => createdIds.push(r.id)));
 
-  return { ok: true, units: await loadUnits(), createdIds };
+  return { ok: true, units: await loadUnits(), batches: await loadBatches(), createdIds };
+}
+
+/**
+ * Modifie un lot après coup (PO, projet, référence, sous-traitant, gamme).
+ * Les champs copiés sur les unités sont propagés. Si la gamme change, l'étape
+ * courante de chaque unité est RECALCULÉE depuis son journal d'événements
+ * (première opération de la nouvelle gamme sans événement réussi). Les unités
+ * bloquées (non conformes) ou déjà livrées ne sont pas déplacées.
+ */
+export async function updateBatchAction(input: unknown): Promise<ActionResult> {
+  const parsed = updateBatchSchema.safeParse(input);
+  if (!parsed.success) return fail(parsed.error.issues[0]?.message ?? "Entrée invalide");
+  const d = parsed.data;
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      const batch = await tx.batch.findUnique({
+        where: { id: d.batchId },
+        include: { units: { include: { events: true } } },
+      });
+      if (!batch) throw new Error("Lot introuvable");
+
+      const route = await tx.route.findUnique({
+        where: { id: d.routeId },
+        include: { steps: true },
+      });
+      if (!route) throw new Error("Gamme introuvable");
+      const steps = route.steps
+        .slice()
+        .sort((a, b) => a.position - b.position)
+        .map((s) => s.operationKey);
+
+      await tx.batch.update({
+        where: { id: batch.id },
+        data: {
+          po: d.po || null,
+          projet: d.projet,
+          reference: d.reference,
+          sub: d.sub || null,
+          routeId: route.id,
+        },
+      });
+
+      const routeChanged = batch.routeId !== route.id;
+
+      for (const u of batch.units) {
+        const data: {
+          projet: string;
+          reference: string;
+          po: string | null;
+          sub: string | null;
+          currentOperationKey?: string | null;
+          version?: { increment: number };
+        } = {
+          projet: d.projet,
+          reference: d.reference,
+          po: d.po || null,
+          sub: d.sub || null,
+        };
+        if (routeChanged && !u.blocked && !u.deliveryId) {
+          const done = new Set(
+            u.events.filter((e) => e.result !== EventResult.fail).map((e) => e.operationKey),
+          );
+          data.currentOperationKey = steps.find((k) => !done.has(k)) ?? null;
+          data.version = { increment: 1 };
+        }
+        await tx.unit.update({ where: { id: u.id }, data });
+      }
+    });
+  } catch (e) {
+    return fail(e instanceof Error ? e.message : "Erreur");
+  }
+  return { ok: true, units: await loadUnits(), batches: await loadBatches() };
 }
 
 export async function confirmMontageAction(input: unknown): Promise<ActionResult> {
@@ -275,8 +352,12 @@ export async function saveTemplateAction(input: unknown): Promise<ActionResult> 
 
 /** Recharge les données vivantes (déclenché par la synchro temps réel). */
 export async function getLiveDataAction(): Promise<ActionResult> {
-  const [units, deliveries] = await Promise.all([loadUnits(), loadDeliveries()]);
-  return { ok: true, units, deliveries };
+  const [units, batches, deliveries] = await Promise.all([
+    loadUnits(),
+    loadBatches(),
+    loadDeliveries(),
+  ]);
+  return { ok: true, units, batches, deliveries };
 }
 
 export async function markPrintedAction(input: unknown): Promise<ActionResult> {
