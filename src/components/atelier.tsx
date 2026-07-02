@@ -4,6 +4,7 @@ import { useRef } from "react";
 import { toast } from "sonner";
 import { useApp } from "./app-context";
 import { LabelView } from "./label-view";
+import { TestInstructions } from "./test-instructions";
 import { QHeader, EmptyState } from "./ui-bits";
 import {
   createBatchAction,
@@ -216,17 +217,18 @@ function ScanInput() {
 function ScanStation({ station }: { station: StationKey }) {
   const { units, ui } = useApp();
   if (!ui.op[station]) return <OpPicker station={station} />;
+  const extra = station === "test" ? <TestInstructions /> : undefined;
   const scanned = ui.scanUnit ? byId(units, ui.scanUnit) : null;
   if (scanned)
     return (
       <>
-        <KBar station={station} />
+        <KBar station={station} extra={extra} />
         <ActionCard unit={scanned} station={station} />
       </>
     );
   return (
     <>
-      <KBar station={station} />
+      <KBar station={station} extra={extra} />
       <ScanInput />
       <WaitingList station={station} />
     </>
