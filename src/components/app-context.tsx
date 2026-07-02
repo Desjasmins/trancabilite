@@ -4,7 +4,7 @@ import { createContext, useContext, useState, useCallback, useEffect } from "rea
 import { toast } from "sonner";
 import { useLang } from "./lang-provider";
 import { getLiveDataAction, type ActionResult } from "@/app/actions";
-import { subscribeSync, notifyChange } from "@/lib/realtime";
+import { subscribeSync, notifyChange, realtimeEnabled } from "@/lib/realtime";
 import type {
   Snapshot,
   UnitDTO,
@@ -141,14 +141,48 @@ export function AppProvider({
     [applyResult],
   );
 
-  // Synchro temps réel : un autre écran a changé une donnée -> on recharge.
+  // Synchro live : signal temps réel + filets de sécurité pour qu'aucun écran
+  // ne reste périmé sans action de l'utilisateur.
   useEffect(() => {
-    const unsub = subscribeSync(() => {
+    let debounce: ReturnType<typeof setTimeout> | null = null;
+    const refresh = () => {
       void getLiveDataAction().then((res) => {
         if (res.ok) applyResult(res);
       });
-    });
-    return unsub;
+    };
+    // Groupe les signaux rapprochés (plusieurs actions en rafale -> 1 rechargement).
+    const onSignal = () => {
+      if (debounce) clearTimeout(debounce);
+      debounce = setTimeout(refresh, 200);
+    };
+
+    // 1) Temps réel : un autre écran a changé une donnée.
+    const unsub = subscribeSync(onSignal);
+
+    // 2) Onglet redevenu visible (veille, changement d'onglet) : des signaux
+    //    ont pu être ratés pendant ce temps.
+    const onVisible = () => {
+      if (document.visibilityState === "visible") refresh();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+
+    // 3) Retour du réseau.
+    window.addEventListener("online", refresh);
+
+    // 4) Rafraîchissement périodique de secours (onglet visible seulement) :
+    //    garantit la fraîcheur même si le temps réel est indisponible.
+    const every = realtimeEnabled() ? 60_000 : 20_000;
+    const poll = setInterval(() => {
+      if (document.visibilityState === "visible") refresh();
+    }, every);
+
+    return () => {
+      unsub();
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("online", refresh);
+      clearInterval(poll);
+      if (debounce) clearTimeout(debounce);
+    };
   }, [applyResult]);
 
   return (

@@ -16,6 +16,7 @@ const CHANNEL = "lb-sync";
 
 let client: SupabaseClient | null = null;
 let channel: RealtimeChannel | null = null;
+let wasDisconnected = false;
 const listeners = new Set<() => void>();
 
 export function realtimeEnabled() {
@@ -35,7 +36,16 @@ function ensureChannel(): RealtimeChannel | null {
       .on("broadcast", { event: "changed" }, () => {
         listeners.forEach((l) => l());
       })
-      .subscribe();
+      .subscribe((status) => {
+        // Coupure réseau / veille : des signaux ont pu être ratés pendant la
+        // déconnexion -> on force une resynchro dès que le canal revient.
+        if (status === "SUBSCRIBED" && wasDisconnected) {
+          wasDisconnected = false;
+          listeners.forEach((l) => l());
+        } else if (status !== "SUBSCRIBED") {
+          wasDisconnected = true;
+        }
+      });
   }
   return channel;
 }
