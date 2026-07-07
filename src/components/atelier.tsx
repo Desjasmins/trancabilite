@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { useApp } from "./app-context";
 import { LabelView } from "./label-view";
@@ -9,6 +9,8 @@ import { QHeader, EmptyState } from "./ui-bits";
 import {
   createBatchAction,
   confirmMontageAction,
+  confirmMontageBulkAction,
+  retestUnitAction,
   confirmTestAction,
   confirmVerifAction,
   packUnitAction,
@@ -179,7 +181,11 @@ function ScanInput() {
       test: "test",
       verification: "verification",
     };
-    if (statut(u) !== map[ui.station as string]) {
+    const st = statut(u);
+    // Au poste Test, une unité non conforme peut être rescannée pour reprise
+    // d'essai après réparation.
+    const retestable = ui.station === "test" && st === "rejet" && u.currentOperationKey === "test";
+    if (st !== map[ui.station as string] && !retestable) {
       toast.error(t.notFound);
       return;
     }
@@ -236,25 +242,105 @@ function ScanStation({ station }: { station: StationKey }) {
 }
 
 function WaitingList({ station }: { station: StationKey }) {
-  const { units, setUi, t } = useApp();
+  const { units, ui, setUi, run, t, pending } = useApp();
   const q = queueFor(units, station);
+  // Sélection multiple : au Montage uniquement (opération simple, files longues).
+  const multi = station === "montage";
+  const [selecting, setSelecting] = useState(false);
+  const [sel, setSel] = useState<Set<string>>(new Set());
+  const op = ui.op[station];
+
+  const toggleSel = (id: string) =>
+    setSel((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+
+  const exitSelect = () => {
+    setSelecting(false);
+    setSel(new Set());
+  };
+
+  const confirmSelected = async () => {
+    if (!op || sel.size === 0) return;
+    const res = await run(confirmMontageBulkAction({ unitIds: [...sel], operator: op }));
+    if (res.ok) {
+      toast.success(`${res.doneCount ?? 0} ${t.bulkDone}`);
+      if (res.failCount) toast.error(`${res.failCount} ${t.bulkSkipped}`);
+      exitSelect();
+    }
+  };
+
   return (
     <>
       <QHeader label={`${t.waiting} · ${q.length}`} />
+      {multi && q.length > 0 && (
+        <div className="sticky top-0 z-10 mb-3 flex flex-wrap items-center gap-2 bg-background py-2">
+          {!selecting ? (
+            <button
+              onClick={() => setSelecting(true)}
+              className="rounded-[9px] border border-line bg-transparent px-3.5 py-2.5 text-[13px] font-bold hover:border-amber hover:text-amber"
+            >
+              ☑ {t.multiSelect}
+            </button>
+          ) : (
+            <>
+              <button
+                onClick={confirmSelected}
+                disabled={pending || sel.size === 0}
+                className="rounded-[9px] bg-amber px-4 py-2.5 text-[13px] font-bold text-[#16181a] hover:bg-amber-bright disabled:opacity-50"
+              >
+                {t.bulkConfirmMont} ({sel.size}) — {op}
+              </button>
+              <button
+                onClick={() => setSel(new Set(q.map((u) => u.id)))}
+                className="rounded-[9px] border border-line bg-transparent px-3.5 py-2.5 text-[13px] font-bold hover:border-amber hover:text-amber"
+              >
+                {t.selectAll}
+              </button>
+              <button
+                onClick={exitSelect}
+                className="rounded-[9px] border border-line bg-transparent px-3.5 py-2.5 text-[13px] font-bold hover:border-amber hover:text-amber"
+              >
+                {t.cancel}
+              </button>
+            </>
+          )}
+        </div>
+      )}
       {q.length ? (
         <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(160px,1fr))]">
           {q.map((u) => (
             <button
               key={u.id}
               onClick={() =>
-                setUi({
-                  scanUnit: u.id,
-                  pendingTest: { diel: null, pol: null, eff: null },
-                  verifArm: false,
-                })
+                selecting
+                  ? toggleSel(u.id)
+                  : setUi({
+                      scanUnit: u.id,
+                      pendingTest: { diel: null, pol: null, eff: null },
+                      verifArm: false,
+                    })
               }
-              className="flex min-h-[104px] flex-col justify-between rounded-[14px] border border-line bg-panel p-[18px] text-left hover:border-amber"
+              className={cn(
+                "relative flex min-h-[104px] flex-col justify-between rounded-[14px] border border-line bg-panel p-[18px] text-left hover:border-amber",
+                selecting && sel.has(u.id) && "border-amber",
+              )}
             >
+              {selecting && (
+                <span
+                  className={cn(
+                    "absolute right-2.5 top-2.5 flex h-[22px] w-[22px] items-center justify-center rounded-full border text-xs font-bold",
+                    sel.has(u.id)
+                      ? "border-amber bg-amber text-[#16181a]"
+                      : "border-line text-transparent",
+                  )}
+                >
+                  ✓
+                </span>
+              )}
               <div className="font-mono text-[18px] font-bold">{modele(u)}</div>
               <div className="mt-1 font-mono text-[13px] text-muted-foreground">
                 S.N. {u.serie}
@@ -313,6 +399,11 @@ function ActionCard({ unit, station }: { unit: UnitDTO; station: StationKey }) {
     if (res.ok) setUi({ scanUnit: null, verifArm: false });
   };
 
+  const doRetest = async () => {
+    // Après déblocage, l'unité reste affichée : l'opérateur enchaîne l'essai.
+    await run(retestUnitAction({ unitId: unit.id, operator: op }), t.toastRetest);
+  };
+
   const showNc = Object.values(ui.pendingTest).includes("refus");
   const same = op === unit.montage.par;
 
@@ -329,7 +420,19 @@ function ActionCard({ unit, station }: { unit: UnitDTO; station: StationKey }) {
         </BigBtn>
       )}
 
-      {station === "test" && (
+      {station === "test" && unit.blocked && (
+        <>
+          <div className="mt-3.5 rounded-[10px] border border-[#5a2326] bg-[#3a1719] px-[15px] py-3 text-[13px] text-[#ffb3b6]">
+            {t.toastReject}
+            {unit.nc ? ` — ${unit.nc}` : ""}
+          </div>
+          <BigBtn onClick={doRetest}>
+            {t.retestBtn} — {op}
+          </BigBtn>
+        </>
+      )}
+
+      {station === "test" && !unit.blocked && (
         <>
           <div className="mt-5">
             {(["diel", "pol", "eff"] as const).map((k) => (

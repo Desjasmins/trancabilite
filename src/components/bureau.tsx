@@ -13,7 +13,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import { saveSettingsAction, markPrintedAction, createBatchAction, updateBatchAction } from "@/app/actions";
+import { saveSettingsAction, markPrintedAction, createBatchAction, updateBatchAction, retestUnitAction } from "@/app/actions";
 import { statut, byId } from "@/lib/status";
 import { modele } from "@/lib/label";
 import { printLabels, printSlip } from "@/lib/print";
@@ -182,11 +182,25 @@ function Td({
 }
 
 function DetailPanel() {
-  const { units, ui, setUi, template, t } = useApp();
+  const { units, ui, setUi, template, run, user, t, pending } = useApp();
   const u = ui.openId ? byId(units, ui.openId) : null;
   const open = !!u;
   const s = u ? statut(u) : "montage";
   const bad = u ? [u.test.diel, u.test.pol, u.test.eff].includes("refus") : false;
+  const retestRef = useRef<HTMLInputElement>(null);
+
+  const retest = async () => {
+    if (!u) return;
+    const res = await run(
+      retestUnitAction({
+        unitId: u.id,
+        operator: user?.name || "Bureau",
+        note: retestRef.current?.value,
+      }),
+      t.toastRetest,
+    );
+    if (res.ok) setUi({ openId: null });
+  };
 
   const reprint = async () => {
     if (!u) return;
@@ -233,6 +247,19 @@ function DetailPanel() {
                 <div className="rounded-[10px] border border-[#5a2326] bg-[#3a1719] px-[15px] py-3 text-[13px] text-[#ffb3b6]">
                   {t.toastReject}
                   {u.nc ? ` — ${u.nc}` : ""}
+                </div>
+              )}
+
+              {s === "rejet" && !ui.client && (
+                <div className="mt-3 flex flex-col gap-2">
+                  <input ref={retestRef} placeholder={t.retestNote} className={inputCls} />
+                  <button
+                    onClick={retest}
+                    disabled={pending}
+                    className="rounded-[9px] bg-amber px-[17px] py-[11px] font-bold text-[#16181a] hover:bg-amber-bright disabled:opacity-60"
+                  >
+                    {t.retestBtn}
+                  </button>
                 </div>
               )}
 

@@ -24,6 +24,19 @@ export const updateBatchSchema = z.object({
 });
 export type UpdateBatchInput = z.infer<typeof updateBatchSchema>;
 
+export const retestUnitSchema = z.object({
+  unitId: z.string().min(1),
+  operator: z.string().trim().min(1, "Opérateur requis"),
+  note: z.string().trim().max(300).optional().default(""),
+});
+export type RetestUnitInput = z.infer<typeof retestUnitSchema>;
+
+export const confirmMontageBulkSchema = z.object({
+  unitIds: z.array(z.string().min(1)).min(1).max(500),
+  operator: z.string().trim().min(1, "Opérateur requis"),
+});
+export type ConfirmMontageBulkInput = z.infer<typeof confirmMontageBulkSchema>;
+
 export const confirmMontageSchema = z.object({
   unitId: z.string().min(1),
   operator: z.string().trim().min(1, "Opérateur requis").max(80),
