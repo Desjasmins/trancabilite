@@ -5,17 +5,24 @@ vi.mock("@/lib/auth", () => import("./auth"));
 vi.mock("next/headers", () => import("./headers"));
 
 import { prisma } from "@/lib/db";
-import { resetDbMock, type PrismaMock } from "./db";
+import { resetDbMock, MODEL_DELEGATES, type PrismaMock } from "./db";
+import { Prisma } from "@/generated/prisma/client";
 import { auth } from "@/lib/auth";
-import { getSession, setSession } from "./auth";
+import { setSession, sessionFor } from "./auth";
 import { headers, cookies } from "next/headers";
-import { setHeaders, resetHeadersMock } from "./headers";
+import { setHeaders, resetHeadersMock, cookieOptionsOf } from "./headers";
 
 const db = prisma as unknown as PrismaMock;
 
 describe("bouchon @/lib/db — Étant donné le client Prisma bouchonné", () => {
   beforeEach(() => resetDbMock());
 
+  it("Quand on compare aux modèles du client généré, alors chaque modèle a son délégué et aucun autre", () => {
+    const attendus = Object.values(Prisma.ModelName).map((m) => m[0].toLowerCase() + m.slice(1)).sort();
+    expect([...MODEL_DELEGATES].sort()).toEqual(attendus);
+    const delegues = Object.keys(db).filter((k) => !k.startsWith("$")).sort();
+    expect(delegues).toEqual(attendus);
+  });
   it("Quand on importe @/lib/db, alors on reçoit le bouchon (aucune connexion)", () => {
     expect(vi.isMockFunction(db.unit.findMany)).toBe(true);
   });
@@ -41,12 +48,17 @@ describe("bouchon @/lib/db — Étant donné le client Prisma bouchonné", () =>
 
 describe("bouchon @/lib/auth — Étant donné la session bouchonnée", () => {
   it("Quand rien n'est réglé, alors aucune session", async () => {
-    expect(await getSession()).toBeNull();
+    expect(await auth.api.getSession({ headers: new Headers() })).toBeNull();
   });
-  it("Quand une session est réglée, alors getSession et auth.api.getSession la rendent", async () => {
-    setSession({ user: { id: "u", name: "Ana", role: "admin" } });
-    expect((await auth.api.getSession({ headers: new Headers() }))?.user.name).toBe("Ana");
-    expect((await getSession())?.user.role).toBe("admin");
+  it("Quand une session est réglée, alors auth.api.getSession rend { session, user } comme Better Auth", async () => {
+    setSession(sessionFor({ id: "u", name: "Ana", role: "admin" }));
+    const r = await auth.api.getSession({ headers: new Headers() });
+    expect(r?.user).toEqual({ id: "u", name: "Ana", role: "admin" });
+    expect(r?.session).toMatchObject({ id: "s-u", userId: "u", token: "jeton-factice" });
+    expect(r?.session.expiresAt).toBeInstanceOf(Date);
+  });
+  it("Quand on cherche un export nommé getSession, alors il n'existe pas (seul auth.api.getSession)", async () => {
+    expect(Object.keys(await import("./auth"))).not.toContain("getSession");
   });
 });
 
@@ -65,6 +77,19 @@ describe("bouchon next/headers — Étant donné des en-têtes et cookies en mé
     expect(jar.has("k")).toBe(true);
     jar.delete("k");
     expect(jar.has("k")).toBe(false);
+  });
+  it("Quand on pose des cookies avec options, alors getAll les liste et les options sont conservées", async () => {
+    const jar = await cookies();
+    jar.set("a", "1", { httpOnly: true, secure: true, maxAge: 60 });
+    jar.set("b", "2");
+    expect(jar.getAll()).toEqual([{ name: "a", value: "1" }, { name: "b", value: "2" }]);
+    expect(cookieOptionsOf("a")).toEqual({ httpOnly: true, secure: true, maxAge: 60 });
+    expect(cookieOptionsOf("b")).toBeUndefined();
+    jar.set("a", "3");
+    expect(cookieOptionsOf("a")).toBeUndefined();
+    jar.set("b", "4", { path: "/" });
+    jar.delete("b");
+    expect(cookieOptionsOf("b")).toBeUndefined();
   });
   it("Quand on remet à zéro, alors en-têtes et cookies sont vides", async () => {
     setHeaders({ a: "1" });

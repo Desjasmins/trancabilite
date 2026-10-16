@@ -18,7 +18,12 @@ export type PrismaMock = Record<string, Model> & {
 };
 
 const models: Record<string, Model> = {};
-for (const name of ["unit", "traceEvent", "batch", "delivery", "operation", "route", "setting", "user", "session", "account", "verification"]) {
+// Délégués = les 14 modèles de prisma/schema.prisma (vérifié contre Prisma.ModelName dans mocks.test.ts).
+export const MODEL_DELEGATES = [
+  "operation", "route", "routeStep", "operator", "batch", "delivery", "unit",
+  "traceEvent", "settings", "labelTemplate", "user", "session", "account", "verification",
+] as const;
+for (const name of MODEL_DELEGATES) {
   models[name] = model();
 }
 

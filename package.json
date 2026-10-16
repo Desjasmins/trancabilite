@@ -10,6 +10,7 @@
     "lint": "eslint",
     "pretest": "prisma generate",
     "test": "vitest run",
+    "pretest:changed": "prisma generate",
     "test:changed": "vitest run --changed main",
     "pretest:cov": "prisma generate",
     "test:cov": "vitest run --coverage",

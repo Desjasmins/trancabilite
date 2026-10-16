@@ -45,6 +45,14 @@ pnpm dev                    # http://localhost:3000
 | `pnpm db:migrate`  | Crée/applique une migration versionnée      |
 | `pnpm db:seed`     | Charge les données de démonstration         |
 | `pnpm db:studio`   | Explorateur de base Prisma Studio           |
+| `pnpm test`        | Tests Vitest (`src/**/*.test.{ts,tsx}`, `test/**/*.test.ts`) |
+| `pnpm test:changed`| Tests des fichiers modifiés depuis `main`   |
+| `pnpm test:cov`    | Tests avec couverture (v8)                  |
+
+Les trois scripts de test lancent `prisma generate` avant (sans connexion). Les tests
+ne joignent jamais de base : `@/lib/db`, `@/lib/auth` et `next/headers` se bouchonnent
+avec `test/mocks/`, et `test/setup/guard-db.ts` (`setupFiles`) refuse de tourner si `DATABASE_URL`
+ou `DIRECT_URL` vise un autre hôte que `127.0.0.1` ou `localhost`.
 
 ## Fonctionnalités
 
