@@ -6,6 +6,7 @@ import "server-only";
 import { prisma } from "@/lib/db";
 import { EventResult } from "@/generated/prisma/client";
 import { nextOp } from "@/lib/process";
+import type { ZodError } from "zod";
 import type {
   UnitDTO,
   BatchDTO,
@@ -29,6 +30,17 @@ export interface ActionResult {
 
 export function fail(error: string): ActionResult {
   return { ok: false, error };
+}
+
+/** Entrée refusée par Zod : premier message du schéma. Zod rend toujours au moins un
+ *  problème, d'où l'absence de repli (les anciens `?? "Entrée invalide"` étaient morts, D15). */
+export function failInvalid(error: ZodError): ActionResult {
+  return fail(error.issues[0].message);
+}
+
+/** Message d'une exception levée par une transaction : message métier, sinon code GENERIC. */
+export function errorText(e: unknown): string {
+  return e instanceof Error ? e.message : "GENERIC";
 }
 
 /**
@@ -83,6 +95,30 @@ export async function recordOperation(
         nc: failed ? opts.note || null : unit.nc,
         version: { increment: 1 },
       },
+    });
+    if (upd.count === 0) throw new Error("Conflit de concurrence, réessayez");
+  });
+}
+
+/**
+ * Remise en essai d'une unité non conforme réparée : événement `rework` au journal
+ * (le refus reste intact), déblocage sous verrou de version. Partagée par l'action
+ * d'atelier (opérateur choisi à l'écran) et celle du Bureau (nom de session, #3).
+ */
+export async function reworkUnit(unitId: string, operator: string, note: string): Promise<void> {
+  await prisma.$transaction(async (tx) => {
+    const unit = await tx.unit.findUnique({ where: { id: unitId } });
+    if (!unit) throw new Error("Unité introuvable");
+    if (!unit.blocked) throw new Error("Cette unité n'est pas bloquée");
+    if (!unit.currentOperationKey) throw new Error("Unité sans étape courante");
+
+    await tx.traceEvent.create({
+      data: { unitId, operationKey: unit.currentOperationKey, result: EventResult.rework, operator, note: note || null },
+    });
+
+    const upd = await tx.unit.updateMany({
+      where: { id: unitId, version: unit.version },
+      data: { blocked: false, nc: null, version: { increment: 1 } },
     });
     if (upd.count === 0) throw new Error("Conflit de concurrence, réessayez");
   });

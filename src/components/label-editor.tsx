@@ -6,6 +6,7 @@ import { LabelView } from "./label-view";
 import { SectionHeader } from "./ui-bits";
 import { Field, inputCls } from "./atelier";
 import { saveTemplateAction } from "@/app/actions";
+import { errorMessage } from "@/lib/access/errors";
 import {
   LABEL_PRESETS,
   FAM,
@@ -62,9 +63,23 @@ export function LabelEditor() {
     version: 0,
   };
 
+  // Mise à jour immédiate (champs contrôlés : sinon la saisie perd des caractères), mais
+  // l'écran revient au gabarit précédent si le serveur refuse : il n'affiche jamais un
+  // gabarit qui n'est pas enregistré (D12, #3).
   const commit = (next: LabelTemplate) => {
+    const previous = template;
     setTemplate(next);
-    void saveTemplateAction(next);
+    void saveTemplateAction(next).then(
+      (res) => {
+        if (res.ok) return;
+        setTemplate(previous);
+        toast.error(errorMessage(res.error, t));
+      },
+      () => {
+        setTemplate(previous);
+        toast.error(t.errors.network);
+      },
+    );
   };
   const mutate = (fn: (d: LabelTemplate) => void) => {
     const next = clone(template);

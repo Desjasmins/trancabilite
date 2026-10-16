@@ -1,6 +1,6 @@
-import { headers } from "next/headers";
 import { loadSnapshot } from "@/lib/queries";
-import { auth } from "@/lib/auth";
+import { getActor } from "@/lib/access/actor";
+import { projectSnapshot } from "@/lib/access/project";
 import { AppProvider } from "@/components/app-context";
 import { AppRoot } from "@/components/app-root";
 import { DbSetupNotice } from "@/components/db-setup-notice";
@@ -12,22 +12,14 @@ export default async function Home() {
   let snapshot;
   let user: AuthUser | null = null;
   try {
-    const [snap, session] = await Promise.all([
-      loadSnapshot(),
-      auth.api.getSession({ headers: await headers() }),
-    ]);
-    snapshot = snap;
-    if (session?.user) {
-      user = {
-        id: session.user.id,
-        name: session.user.name,
-        email: session.user.email,
-        role: (session.user as { role?: string | null }).role ?? null,
-      };
-    }
+    // Acteur résolu côté serveur (#3) : banni → aucun utilisateur, rôle inconnu → null.
+    const [snap, actor] = await Promise.all([loadSnapshot(), getActor({ mode: "render" })]);
+    snapshot = projectSnapshot(snap, actor);
+    user = actor.user;
   } catch (e) {
-    const message = e instanceof Error ? e.message : String(e);
-    return <DbSetupNotice message={message} />;
+    // Le message brut peut contenir l'URL de connexion : journal serveur seulement (NB9).
+    console.error("[page] chargement impossible", e);
+    return <DbSetupNotice />;
   }
 
   return (

@@ -25,3 +25,13 @@ describe("errorMessage — Étant donné le code renvoyé par une Server Action"
     }
   });
 });
+
+describe("i18n — Étant donné les clés ajoutées par #3", () => {
+  it("Quand on lit fr et en, alors chaque texte de l'encart « base non connectée » existe dans les deux", () => {
+    for (const k of ["dbTitle", "dbLead", "dbStepEnvA", "dbStepEnvB", "dbStepPush", "dbStepSeed", "dbServerLog"] as const) {
+      expect(I.fr[k]).toBeTruthy();
+      expect(I.en[k]).toBeTruthy();
+      expect(I.en[k]).not.toBe(I.fr[k]);
+    }
+  });
+});

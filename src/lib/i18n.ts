@@ -75,6 +75,18 @@ export const I = {
     fSize: "Taille (pt)", fBold: "Gras", fFamily: "Police", fCodeSize: "Taille (mm)", editPart: "Élément :",
     famGlobal: "Globale", famSans: "Sans (Arial)", famMono: "Mono (Courier)", famSerif: "Serif (Georgia)",
     dragHint: "Touchez un élément ci-dessous (ou sur l'aperçu) pour le modifier.",
+    // #3 — refus des Server Actions (codes traduits par run()) et encart « base non connectée ».
+    errors: {
+      AUTH_REQUIRED: "Connectez-vous ou utilisez un écran enregistré.",
+      FORBIDDEN: "Votre compte ne permet pas cette action.",
+      generic: "L'action n'a pas abouti. Réessayez.",
+      network: "Connexion perdue. Vérifiez le réseau puis réessayez.",
+    },
+    dbTitle: "Base de données non connectée",
+    dbLead: "L'application est prête, mais aucune base PostgreSQL n'est encore accessible. Configurez la connexion puis rechargez la page.",
+    dbStepEnvA: "Renseignez", dbStepEnvB: "dans le fichier",
+    dbStepPush: "Appliquez le schéma :", dbStepSeed: "Chargez les données de démo :",
+    dbServerLog: "Le détail de l'erreur est consigné dans le journal du serveur.",
   },
   en: {
     subtitle: "Manufacturing traceability", clientLbl: "Client mode", mAtelier: "Workshop", mBureau: "Office",
@@ -150,6 +162,17 @@ export const I = {
     fSize: "Size (pt)", fBold: "Bold", fFamily: "Font", fCodeSize: "Size (mm)", editPart: "Element:",
     famGlobal: "Global", famSans: "Sans (Arial)", famMono: "Mono (Courier)", famSerif: "Serif (Georgia)",
     dragHint: "Tap an element below (or on the preview) to edit it.",
+    errors: {
+      AUTH_REQUIRED: "Sign in or use a registered screen.",
+      FORBIDDEN: "Your account can't perform this action.",
+      generic: "The action didn't go through. Try again.",
+      network: "Connection lost. Check the network and try again.",
+    },
+    dbTitle: "Database not connected",
+    dbLead: "The app is ready, but no PostgreSQL database is reachable yet. Set up the connection, then reload the page.",
+    dbStepEnvA: "Set", dbStepEnvB: "in the file",
+    dbStepPush: "Apply the schema:", dbStepSeed: "Load the demo data:",
+    dbServerLog: "The error details are recorded in the server log.",
   },
 };
 

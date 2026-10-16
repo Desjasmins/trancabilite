@@ -3,11 +3,12 @@
 import { prisma } from "@/lib/db";
 import { loadSettings, loadTemplate } from "@/lib/queries";
 import { saveSettingsSchema, labelTemplateSchema } from "@/lib/schemas";
-import { fail, type ActionResult } from "./_shared";
+import { failInvalid, type ActionResult } from "./_shared";
+import { withAccess } from "@/lib/access/with-access";
 
-export async function saveSettingsAction(input: unknown): Promise<ActionResult> {
+async function saveSettings(input: unknown): Promise<ActionResult> {
   const parsed = saveSettingsSchema.safeParse(input);
-  if (!parsed.success) return fail(parsed.error.issues[0]?.message ?? "Entrée invalide");
+  if (!parsed.success) return failInvalid(parsed.error);
   const { sub, proj, ops } = parsed.data;
 
   await prisma.$transaction([
@@ -24,9 +25,9 @@ export async function saveSettingsAction(input: unknown): Promise<ActionResult> 
   return { ok: true, settings: await loadSettings() };
 }
 
-export async function saveTemplateAction(input: unknown): Promise<ActionResult> {
+async function saveTemplate(input: unknown): Promise<ActionResult> {
   const parsed = labelTemplateSchema.safeParse(input);
-  if (!parsed.success) return fail(parsed.error.issues[0]?.message ?? "Gabarit invalide");
+  if (!parsed.success) return failInvalid(parsed.error);
   const data = parsed.data;
 
   await prisma.labelTemplate.upsert({
@@ -35,4 +36,14 @@ export async function saveTemplateAction(input: unknown): Promise<ActionResult> 
     update: { data },
   });
   return { ok: true, template: await loadTemplate() };
+}
+
+// Points d'entrée : chaque export passe par la garde, politique lue dans POLICIES (#3).
+const saveSettingsGuarded = withAccess("saveSettingsAction", saveSettings);
+export async function saveSettingsAction(input: unknown): Promise<ActionResult> {
+  return saveSettingsGuarded(input);
+}
+const saveTemplateGuarded = withAccess("saveTemplateAction", saveTemplate);
+export async function saveTemplateAction(input: unknown): Promise<ActionResult> {
+  return saveTemplateGuarded(input);
 }

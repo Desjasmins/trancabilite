@@ -8,21 +8,24 @@ import {
   confirmMontageSchema,
   confirmMontageBulkSchema,
   retestUnitSchema,
+  retestUnitOfficeSchema,
   confirmTestSchema,
   confirmVerifSchema,
   packUnitSchema,
 } from "@/lib/schemas";
-import { fail, recordOperation, type ActionResult } from "./_shared";
+import { fail, failInvalid, errorText, recordOperation, reworkUnit, type ActionResult } from "./_shared";
+import { withAccess } from "@/lib/access/with-access";
+import type { Actor } from "@/lib/access/policy";
 
-export async function confirmMontageAction(input: unknown): Promise<ActionResult> {
+async function confirmMontage(input: unknown): Promise<ActionResult> {
   const parsed = confirmMontageSchema.safeParse(input);
-  if (!parsed.success) return fail(parsed.error.issues[0]?.message ?? "Entrée invalide");
+  if (!parsed.success) return failInvalid(parsed.error);
   const { unitId, operator } = parsed.data;
   try {
     await recordOperation(unitId, "montage", { operator, result: EventResult.done });
     return { ok: true, units: await loadUnits() };
   } catch (e) {
-    return fail(e instanceof Error ? e.message : "Erreur");
+    return fail(errorText(e));
   }
 }
 
@@ -32,25 +35,26 @@ export async function confirmMontageAction(input: unknown): Promise<ActionResult
  * (étape attendue, unité bloquée, verrou optimiste) s'appliquent unité par
  * unité, et un échec n'empêche pas les autres de passer.
  */
-export async function confirmMontageBulkAction(input: unknown): Promise<ActionResult> {
+async function confirmMontageBulk(input: unknown): Promise<ActionResult> {
   const parsed = confirmMontageBulkSchema.safeParse(input);
-  if (!parsed.success) return fail(parsed.error.issues[0]?.message ?? "Entrée invalide");
+  if (!parsed.success) return failInvalid(parsed.error);
   const { unitIds, operator } = parsed.data;
 
   let done = 0;
   let failed = 0;
-  let firstError: string | null = null;
+  const errors: string[] = [];
   for (const id of unitIds) {
     try {
       await recordOperation(id, "montage", { operator, result: EventResult.done });
       done++;
     } catch (e) {
       failed++;
-      firstError ??= e instanceof Error ? e.message : "Erreur";
+      errors.push(errorText(e));
     }
   }
 
-  if (done === 0) return fail(firstError ?? "Erreur");
+  // done === 0 ⇒ au moins une erreur (le schéma exige une unité) : pas de repli mort (D15).
+  if (done === 0) return fail(errors[0]);
   return { ok: true, units: await loadUnits(), doneCount: done, failCount: failed };
 }
 
@@ -59,43 +63,37 @@ export async function confirmMontageBulkAction(input: unknown): Promise<ActionRe
  * au journal (l'historique du refus reste intact), déblocage, et l'unité
  * réapparaît dans la file de l'opération où elle avait échoué (test).
  */
-export async function retestUnitAction(input: unknown): Promise<ActionResult> {
+async function retestUnit(input: unknown): Promise<ActionResult> {
   const parsed = retestUnitSchema.safeParse(input);
-  if (!parsed.success) return fail(parsed.error.issues[0]?.message ?? "Entrée invalide");
+  if (!parsed.success) return failInvalid(parsed.error);
   const { unitId, operator, note } = parsed.data;
-
   try {
-    await prisma.$transaction(async (tx) => {
-      const unit = await tx.unit.findUnique({ where: { id: unitId } });
-      if (!unit) throw new Error("Unité introuvable");
-      if (!unit.blocked) throw new Error("Cette unité n'est pas bloquée");
-      if (!unit.currentOperationKey) throw new Error("Unité sans étape courante");
-
-      await tx.traceEvent.create({
-        data: {
-          unitId,
-          operationKey: unit.currentOperationKey,
-          result: EventResult.rework,
-          operator,
-          note: note || null,
-        },
-      });
-
-      const upd = await tx.unit.updateMany({
-        where: { id: unitId, version: unit.version },
-        data: { blocked: false, nc: null, version: { increment: 1 } },
-      });
-      if (upd.count === 0) throw new Error("Conflit de concurrence, réessayez");
-    });
+    await reworkUnit(unitId, operator, note);
   } catch (e) {
-    return fail(e instanceof Error ? e.message : "Erreur");
+    return fail(errorText(e));
   }
   return { ok: true, units: await loadUnits() };
 }
 
-export async function confirmTestAction(input: unknown): Promise<ActionResult> {
+/**
+ * Remise en essai depuis le Bureau (#3, Q1) : l'opérateur écrit au journal est le nom
+ * du compte connecté, lu côté serveur ; l'entrée n'en porte pas (ignorée si présente).
+ */
+async function retestUnitOffice(input: unknown, actor: Actor): Promise<ActionResult> {
+  const parsed = retestUnitOfficeSchema.safeParse(input);
+  if (!parsed.success) return failInvalid(parsed.error);
+  try {
+    // STAFF_WRITE garantit un utilisateur : `user` n'est jamais nul ici.
+    await reworkUnit(parsed.data.unitId, actor.user!.name, parsed.data.note);
+  } catch (e) {
+    return fail(errorText(e));
+  }
+  return { ok: true, units: await loadUnits() };
+}
+
+async function confirmTest(input: unknown): Promise<ActionResult> {
   const parsed = confirmTestSchema.safeParse(input);
-  if (!parsed.success) return fail(parsed.error.issues[0]?.message ?? "Entrée invalide");
+  if (!parsed.success) return failInvalid(parsed.error);
   const { unitId, operator, diel, pol, eff, nc } = parsed.data;
   const rejected = [diel, pol, eff].includes("refus");
   try {
@@ -107,25 +105,25 @@ export async function confirmTestAction(input: unknown): Promise<ActionResult> {
     });
     return { ok: true, units: await loadUnits() };
   } catch (e) {
-    return fail(e instanceof Error ? e.message : "Erreur");
+    return fail(errorText(e));
   }
 }
 
-export async function confirmVerifAction(input: unknown): Promise<ActionResult> {
+async function confirmVerif(input: unknown): Promise<ActionResult> {
   const parsed = confirmVerifSchema.safeParse(input);
-  if (!parsed.success) return fail(parsed.error.issues[0]?.message ?? "Entrée invalide");
+  if (!parsed.success) return failInvalid(parsed.error);
   const { unitId, operator } = parsed.data;
   try {
     await recordOperation(unitId, "verification", { operator, result: EventResult.done });
     return { ok: true, units: await loadUnits() };
   } catch (e) {
-    return fail(e instanceof Error ? e.message : "Erreur");
+    return fail(errorText(e));
   }
 }
 
-export async function packUnitAction(input: unknown): Promise<ActionResult> {
+async function packUnit(input: unknown): Promise<ActionResult> {
   const parsed = packUnitSchema.safeParse(input);
-  if (!parsed.success) return fail(parsed.error.issues[0]?.message ?? "Entrée invalide");
+  if (!parsed.success) return failInvalid(parsed.error);
   const { unitId, deliveryId } = parsed.data;
 
   const units = await loadUnits();
@@ -138,4 +136,34 @@ export async function packUnitAction(input: unknown): Promise<ActionResult> {
 
   await prisma.unit.update({ where: { id: unitId }, data: { deliveryId } });
   return { ok: true, units: await loadUnits() };
+}
+
+// Points d'entrée : chaque export passe par la garde, politique lue dans POLICIES (#3).
+const confirmMontageGuarded = withAccess("confirmMontageAction", confirmMontage);
+export async function confirmMontageAction(input: unknown): Promise<ActionResult> {
+  return confirmMontageGuarded(input);
+}
+const confirmMontageBulkGuarded = withAccess("confirmMontageBulkAction", confirmMontageBulk);
+export async function confirmMontageBulkAction(input: unknown): Promise<ActionResult> {
+  return confirmMontageBulkGuarded(input);
+}
+const retestUnitGuarded = withAccess("retestUnitAction", retestUnit);
+export async function retestUnitAction(input: unknown): Promise<ActionResult> {
+  return retestUnitGuarded(input);
+}
+const confirmTestGuarded = withAccess("confirmTestAction", confirmTest);
+export async function confirmTestAction(input: unknown): Promise<ActionResult> {
+  return confirmTestGuarded(input);
+}
+const confirmVerifGuarded = withAccess("confirmVerifAction", confirmVerif);
+export async function confirmVerifAction(input: unknown): Promise<ActionResult> {
+  return confirmVerifGuarded(input);
+}
+const packUnitGuarded = withAccess("packUnitAction", packUnit);
+export async function packUnitAction(input: unknown): Promise<ActionResult> {
+  return packUnitGuarded(input);
+}
+const retestUnitOfficeGuarded = withAccess("retestUnitOfficeAction", retestUnitOffice);
+export async function retestUnitOfficeAction(input: unknown): Promise<ActionResult> {
+  return retestUnitOfficeGuarded(input);
 }
