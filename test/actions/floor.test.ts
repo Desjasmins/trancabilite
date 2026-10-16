@@ -72,6 +72,7 @@ describe("recordOperation via confirmMontageAction — figé (#2)", () => {
     db.unit.updateMany.mockResolvedValue({ count: 0 });
     expect(await confirmMontageAction({ unitId: "U1", operator: "Ana" }))
       .toEqual({ ok: false, error: "Conflit de concurrence, réessayez" });
+    expect(db.unit.updateMany.mock.calls[0][0].where).toEqual({ id: "U1", version: 3 });
   });
   it("Quand l'erreur n'est pas une Error, alors le message est « Erreur »", async () => {
     db.unit.findUnique.mockRejectedValue("boom");
