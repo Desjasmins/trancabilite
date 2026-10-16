@@ -2,9 +2,13 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 
 vi.mock("@/lib/db", () => import("../mocks/db"));
 vi.mock("@/lib/queries", () => import("./queries-mock"));
+// #3 : chaque action passe par withAccess → getActor ; session et en-têtes bouchonnés.
+vi.mock("next/headers", () => import("../mocks/headers"));
+vi.mock("@/lib/auth", () => import("../mocks/auth"));
 
 import { prisma } from "@/lib/db";
 import { resetDbMock, type PrismaMock } from "../mocks/db";
+import { setSession } from "../mocks/auth";
 import { resetQueriesMock, loadUnits, UNITS } from "./queries-mock";
 import {
   confirmMontageAction, confirmMontageBulkAction, retestUnitAction,
@@ -29,6 +33,8 @@ function unitRow(over: Record<string, unknown> = {}) {
 beforeEach(() => {
   resetDbMock();
   resetQueriesMock();
+  // #3 : aucune session — l'atelier reste ouvert (OPEN_UNTIL_KIOSK), y compris pour un anonyme.
+  setSession(null);
   db.unit.updateMany.mockResolvedValue({ count: 1 });
 });
 
@@ -74,9 +80,9 @@ describe("recordOperation via confirmMontageAction — figé (#2)", () => {
       .toEqual({ ok: false, error: "Conflit de concurrence, réessayez" });
     expect(db.unit.updateMany.mock.calls[0][0].where).toEqual({ id: "U1", version: 3 });
   });
-  it("Quand l'erreur n'est pas une Error, alors le message est « Erreur »", async () => {
+  it("Quand l'erreur n'est pas une Error, alors GENERIC (D15, #3)", async () => {
     db.unit.findUnique.mockRejectedValue("boom");
-    expect(await confirmMontageAction({ unitId: "U1", operator: "Ana" })).toEqual({ ok: false, error: "Erreur" });
+    expect(await confirmMontageAction({ unitId: "U1", operator: "Ana" })).toEqual({ ok: false, error: "GENERIC" });
   });
 });
 
@@ -94,9 +100,9 @@ describe("confirmMontageBulkAction — figé (#2)", () => {
     expect(await confirmMontageBulkAction({ unitIds: ["A", "B"], operator: "Ana" }))
       .toEqual({ ok: false, error: "Unité bloquée (non conforme)" });
   });
-  it("Quand toutes échouent sans Error, alors « Erreur »", async () => {
+  it("Quand toutes échouent sans Error, alors GENERIC (D15, #3)", async () => {
     db.unit.findUnique.mockRejectedValue("x");
-    expect(await confirmMontageBulkAction({ unitIds: ["A"], operator: "Ana" })).toEqual({ ok: false, error: "Erreur" });
+    expect(await confirmMontageBulkAction({ unitIds: ["A"], operator: "Ana" })).toEqual({ ok: false, error: "GENERIC" });
   });
 });
 
@@ -135,9 +141,9 @@ describe("confirmTestAction — figé (#2)", () => {
     db.unit.findUnique.mockResolvedValue(null);
     expect(await confirmTestAction(base)).toEqual({ ok: false, error: "Unité introuvable" });
   });
-  it("Quand l'erreur n'est pas une Error, alors « Erreur »", async () => {
+  it("Quand l'erreur n'est pas une Error, alors GENERIC (D15, #3)", async () => {
     db.unit.findUnique.mockRejectedValue(1);
-    expect(await confirmTestAction(base)).toEqual({ ok: false, error: "Erreur" });
+    expect(await confirmTestAction(base)).toEqual({ ok: false, error: "GENERIC" });
   });
 });
 
@@ -155,7 +161,7 @@ describe("confirmVerifAction — figé (#2)", () => {
     db.unit.findUnique.mockResolvedValue(null);
     expect(await confirmVerifAction({ unitId: "U1", operator: "Ana" })).toEqual({ ok: false, error: "Unité introuvable" });
     db.unit.findUnique.mockRejectedValue(0);
-    expect(await confirmVerifAction({ unitId: "U1", operator: "Ana" })).toEqual({ ok: false, error: "Erreur" });
+    expect(await confirmVerifAction({ unitId: "U1", operator: "Ana" })).toEqual({ ok: false, error: "GENERIC" });
   });
 });
 
@@ -194,9 +200,9 @@ describe("retestUnitAction — figé (#2)", () => {
     db.unit.updateMany.mockResolvedValue({ count: 0 });
     expect(await retestUnitAction(input)).toEqual({ ok: false, error: "Conflit de concurrence, réessayez" });
   });
-  it("Quand l'erreur n'est pas une Error, alors « Erreur »", async () => {
+  it("Quand l'erreur n'est pas une Error, alors GENERIC (D15, #3)", async () => {
     db.unit.findUnique.mockRejectedValue("x");
-    expect(await retestUnitAction(input)).toEqual({ ok: false, error: "Erreur" });
+    expect(await retestUnitAction(input)).toEqual({ ok: false, error: "GENERIC" });
   });
 });
 
