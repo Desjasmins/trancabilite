@@ -22,8 +22,13 @@ export default async function Home() {
     return <DbSetupNotice />;
   }
 
+  // R1 : la key change avec l'identité (connexion, déconnexion + router.refresh()). React
+  // remonte alors AppProvider, dont l'état repart de l'instantané projeté pour cette
+  // identité : rien de ce qu'un anonyme avait chargé (opérateurs, gabarit) ne survit.
+  const identity = user ? `${user.id}:${user.role ?? "aucun"}` : "anonyme";
+
   return (
-    <AppProvider initial={snapshot} user={user}>
+    <AppProvider key={identity} initial={snapshot} user={user}>
       <AppRoot />
     </AppProvider>
   );

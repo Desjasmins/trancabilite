@@ -68,7 +68,8 @@ describe("page d'accueil — Étant donné l'acteur résolu au rendu (#3)", () =
     const anon = await keyFor("anonyme");
     const client = await keyFor("client");
     const admin = await keyFor("admin");
-    expect(new Set([anon, client, admin]).size).toBe(3);
+    const inconnu = await keyFor("inconnu"); // rôle hors liste : sa propre identité aussi
+    expect(new Set([anon, client, admin, inconnu]).size).toBe(4);
     expect(await keyFor("client")).toBe(client); // même identité → même état conservé
   });
 });

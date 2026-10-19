@@ -80,6 +80,20 @@ non-conformités (statut `rejet`).
 
 Transversal : **i18n FR/EN**, mode client (lecture seule).
 
+## Rôles et droits
+
+Les comptes du Bureau sont des comptes Better Auth à trois rôles. Sans inscription publique, c'est l'admin qui crée les comptes. Les droits sont vérifiés **côté serveur** à chaque Server Action, selon le tableau unique `src/app/actions/policies.ts`.
+
+| Rôle | Ce qu'il peut faire |
+|---|---|
+| **Admin** | Tout ce que fait le superviseur, plus les routes d'administration des comptes de Better Auth (greffon `admin`). |
+| **Superviseur** | Écritures du Bureau : modifier un lot, enregistrer les paramètres et les opérateurs, enregistrer le gabarit d'étiquette, remettre en essai une unité non conforme (le journal porte son nom). |
+| **Client** | Lecture seule du registre et des rapports. Il ne reçoit ni la liste des opérateurs ni le gabarit enregistré. Toute écriture du Bureau lui est refusée. |
+
+Un rôle hors de ces trois valeurs, ou un compte banni, n'a aucun droit au Bureau.
+
+**L'atelier reste ouvert** : ses actions (créer un lot, valider un poste, emballer, livraisons, synchro) ne demandent aucune connexion. Elles sont marquées `OPEN_UNTIL_KIOSK` en attendant l'identification des écrans d'atelier (tickets #4 et #5).
+
 ## Modèle de données (`prisma/schema.prisma`)
 
 - **Unit** — cœur de la traçabilité. Le **statut est dérivé** des champs d'étapes
