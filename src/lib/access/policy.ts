@@ -30,7 +30,7 @@ export interface Actor {
 
 /**
  * FLOOR_WRITE : écran appairé, ou admin/superviseur. READ : écran appairé, ou compte de rôle
- * connu (admin, superviseur, client). Écran révoqué : refusé, sauf staff connecté (NB-a).
+ * connu (admin, superviseur, client). Écran révoqué : on retombe sur le compte (NB-a, ADR).
  * Le compte n'élargit ni ne restreint l'écran (NB-b).
  */
 export type Policy = "ADMIN_WRITE" | "STAFF_WRITE" | "FLOOR_WRITE" | "READ";
@@ -42,7 +42,8 @@ const isNull = (actor: Actor) => !actor.user && !actor.banned && !actor.kiosk &&
 
 /** Garde de l'atelier : écran, ou exception propre à la politique, ou acteur nul drapeau éteint. */
 function floor(actor: Actor, enforceFloor: boolean, accountOk: boolean): boolean {
-  if (actor.kioskRevoked) return isStaff(actor);
+  // Écran révoqué : on retombe sur le compte (ADR) — staff en écriture, tout compte connu en lecture.
+  if (actor.kioskRevoked) return accountOk;
   return actor.kiosk !== null || accountOk || (!enforceFloor && isNull(actor));
 }
 

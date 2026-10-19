@@ -22,10 +22,13 @@ export default async function Home() {
   let user: AuthUser | null = null;
   let screen: ScreenState = { status: "none" };
   let floorGuardOff = false;
+  let signedIn = false;
   try {
     // Acteur résolu côté serveur (#3) : banni → aucun utilisateur, rôle inconnu → null.
     const actor = await getActor({ mode: "render" });
     user = actor.user;
+    // Une session existe (même bannie ou de rôle inconnu) : la porte propose de se déconnecter.
+    signedIn = actor.user !== null || actor.banned;
     // État de l'écran (#4), lu au rendu sans rien écrire (mode "render").
     if (actor.kiosk) screen = { status: "paired", label: actor.kiosk.label };
     else if (actor.kioskRevoked) screen = { status: "revoked" };
@@ -50,7 +53,7 @@ export default async function Home() {
   if (!snapshot) {
     return (
       <AppProvider key={`porte:${identity}`} initial={EMPTY} user={null} live={false}>
-        <UnregisteredGate screen={screen} />
+        <UnregisteredGate screen={screen} signedIn={signedIn} />
       </AppProvider>
     );
   }

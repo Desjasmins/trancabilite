@@ -78,6 +78,7 @@ export const I = {
     // #4 — écrans d'atelier (lexique : « écran » = appareil enregistré ; « poste » = lieu de travail).
     tabThisScreen: "Cet écran", tabStations: "Écrans d'atelier",
     // #5 — bandeau Admin tant que la garde de l'atelier est inactive.
+    gateSignOut: "Se déconnecter",
     floorGuardOff: "Garde de l'atelier inactive\u00a0: l'atelier accepte encore les appels sans écran enregistré.",
     stationUnpairedTitle: "Écran non enregistré",
     stationUnpairedBody: "Cet écran n'est pas encore autorisé pour l'atelier. Un admin doit l'enregistrer une fois.",
@@ -186,6 +187,7 @@ export const I = {
     famGlobal: "Global", famSans: "Sans (Arial)", famMono: "Mono (Courier)", famSerif: "Serif (Georgia)",
     dragHint: "Tap an element below (or on the preview) to edit it.",
     tabThisScreen: "This screen", tabStations: "Shop-floor screens",
+    gateSignOut: "Sign out",
     floorGuardOff: "Shop-floor guard inactive: the shop floor still accepts calls from unregistered screens.",
     stationUnpairedTitle: "Screen not registered",
     stationUnpairedBody: "This screen isn't authorized for the shop floor yet. An admin needs to register it once.",

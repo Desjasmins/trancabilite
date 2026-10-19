@@ -92,7 +92,7 @@ Les comptes du Bureau sont des comptes Better Auth à trois rôles. Sans inscrip
 
 Un rôle hors de ces trois valeurs, ou un compte banni, n'a aucun droit au Bureau.
 
-**Atelier (#5)** : ses écritures (créer un lot, valider un poste, remise en essai, emballer, livraisons, impression) demandent un **écran enregistré** ou un admin/superviseur connecté (`FLOOR_WRITE`) ; la lecture (page, synchro) demande un écran enregistré ou un compte de rôle connu (`READ`). Un client connecté sur un écran enregistré a les droits de l'écran, ni plus ni moins. Un compte banni ou de rôle inconnu n'a aucun droit. Un écran retiré est refusé, sauf admin ou superviseur connecté.
+**Atelier (#5)** : ses écritures (créer un lot, valider un poste, remise en essai, emballer, livraisons, impression) demandent un **écran enregistré** ou un admin/superviseur connecté (`FLOOR_WRITE`) ; la lecture (page, synchro) demande un écran enregistré ou un compte de rôle connu (`READ`). Un client connecté sur un écran enregistré a les droits de l'écran, ni plus ni moins. Un compte banni ou de rôle inconnu n'a aucun droit. Sur un écran retiré, on retombe sur le compte connecté : admin ou superviseur travaillent, un client lit ; sans compte, refus. Un compte connecté mais refusé (banni, rôle inconnu) voit la porte avec « Se déconnecter ».
 
 ### Drapeau `ACCESS_ENFORCE_FLOOR` (#5, temporaire, échéance 2026-11-30)
 

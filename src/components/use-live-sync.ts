@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { getLiveDataAction, type ActionResult } from "@/app/actions";
 import { subscribeSync, realtimeEnabled } from "@/lib/realtime";
 
+const STOP_ON: readonly string[] = ["AUTH_REQUIRED", "KIOSK_REVOKED", "FORBIDDEN"];
+
 /**
  * Synchro live (extrait d'AppProvider, #5) : signal temps réel + filets de sécurité pour
  * qu'aucun écran ne reste périmé sans action de l'utilisateur. `live` à false : rien.
@@ -18,9 +20,9 @@ export function useLiveSync(live: boolean, applyResult: (res: ActionResult) => v
     const refresh = () => {
       void getLiveDataAction().then((res) => {
         if (res.ok) applyResult(res);
-        // #5 : l'accès est retiré (session, écran révoqué) → plus de sondage ; le rendu serveur
-        // décide de la suite (porte de connexion, état de l'écran).
-        else if (!stopped && (res.error === "AUTH_REQUIRED" || res.error === "KIOSK_REVOKED")) {
+        // #5 : l'accès est retiré (session, écran révoqué, droits) → plus de sondage ; le rendu
+        // serveur décide de la suite (porte de connexion, état de l'écran).
+        else if (!stopped && STOP_ON.includes(res.error ?? "")) {
           stop();
           router.refresh();
         }
