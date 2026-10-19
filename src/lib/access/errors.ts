@@ -5,11 +5,17 @@ import type { Dict } from "@/lib/i18n";
  * Sans "server-only" : `run()` et l'éditeur de gabarit (client) les lisent.
  */
 export type AccessError = "AUTH_REQUIRED" | "FORBIDDEN" | "KIOSK_REVOKED";
-export type ErrorCode = AccessError | "GENERIC";
+/** Refus métier des écrans d'atelier (#4), traduits comme les codes d'accès. */
+export type KioskError = "KIOSK_NOT_FOUND" | "KIOSK_LABEL_TAKEN";
+export type ErrorCode = AccessError | KioskError | "GENERIC";
+
+const TRANSLATED: readonly string[] = [
+  "AUTH_REQUIRED", "FORBIDDEN", "KIOSK_REVOKED", "KIOSK_NOT_FOUND", "KIOSK_LABEL_TAKEN",
+] satisfies Array<Exclude<ErrorCode, "GENERIC">>;
 
 /** Texte affiché pour l'erreur d'une action : code traduit, sinon message métier tel quel (D4). */
 export function errorMessage(error: string | undefined, t: Dict): string {
-  if (error === "AUTH_REQUIRED" || error === "FORBIDDEN" || error === "KIOSK_REVOKED") return t.errors[error];
+  if (error && TRANSLATED.includes(error)) return t.errors[error as Exclude<ErrorCode, "GENERIC">];
   if (!error || error === "GENERIC") return t.errors.generic;
   return error;
 }

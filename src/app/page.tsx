@@ -29,7 +29,9 @@ export default async function Home() {
   // R1 : la key change avec l'identité (connexion, déconnexion + router.refresh()). React
   // remonte alors AppProvider, dont l'état repart de l'instantané projeté pour cette
   // identité : rien de ce qu'un anonyme avait chargé (opérateurs, gabarit) ne survit.
-  const identity = user ? `${user.id}:${user.role ?? "aucun"}` : "anonyme";
+  // L'état de l'écran (#4) en fait partie : appairer ou révoquer repart aussi d'un état propre.
+  const who = user ? `${user.id}:${user.role ?? "aucun"}` : "anonyme";
+  const identity = `${who}:${screen.status}`;
 
   return (
     <AppProvider key={identity} initial={snapshot} user={user}>

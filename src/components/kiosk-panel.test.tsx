@@ -12,6 +12,8 @@ vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh }) }));
 vi.mock("./app-context", () => ({ useApp: vi.fn() }));
 
 const refresh = vi.fn();
+/** Testing Library compare le texte du DOM normalisé (insécables → espaces) au texte cherché tel quel. */
+const nb = (s: string) => s.replace(/\u00a0/g, " ");
 
 import { pairKioskAction, revokeKioskAction, renameKioskAction, listKiosksAction } from "@/app/actions";
 import { useApp } from "./app-context";
@@ -50,7 +52,7 @@ describe("ThisScreen — onglet « Cet écran » (#4)", () => {
     fireEvent.click(screen.getByText(I.fr.stationPairBtn));
     // Confirmation d'abord (tour 2) : rien n'est appelé avant.
     expect(pairKioskAction).not.toHaveBeenCalled();
-    expect(screen.getByText(I.fr.stationPairConfirm)).toBeTruthy();
+    expect(screen.getByText(nb(I.fr.stationPairConfirm))).toBeTruthy();
     fireEvent.click(screen.getByText(I.fr.stationPairYes));
     await waitFor(() => expect(refresh).toHaveBeenCalled());
     expect(pairKioskAction).toHaveBeenCalledWith({ label: "Établi 2" });
@@ -78,7 +80,7 @@ describe("ThisScreen — onglet « Cet écran » (#4)", () => {
   it("Quand l'écran est enregistré, alors son nom ; révoqué, le texte KIOSK_REVOKED", () => {
     vi.mocked(useApp).mockReturnValue(ctx(null));
     const { rerender } = render(<ThisScreen screen={{ status: "paired", label: "Établi 2" }} />);
-    expect(screen.getByText(I.fr.stationPairedAs)).toBeTruthy();
+    expect(screen.getByText(nb(I.fr.stationPairedAs))).toBeTruthy();
     expect(screen.getByText("Établi 2")).toBeTruthy();
     rerender(<ThisScreen screen={{ status: "revoked" }} />);
     expect(screen.getByText(I.fr.errors.KIOSK_REVOKED)).toBeTruthy();
@@ -106,7 +108,7 @@ describe("ThisScreen — confirmation de l'appairage (tour 2)", () => {
     render(<ThisScreen screen={{ status: "none" }} />);
     fireEvent.change(screen.getByLabelText(I.en.stationLabel), { target: { value: "X" } });
     fireEvent.click(screen.getByText(I.en.stationPairBtn));
-    expect(screen.getByText(I.en.stationPairConfirm)).toBeTruthy();
+    expect(screen.getByText(nb(I.en.stationPairConfirm))).toBeTruthy();
   });
 });
 
@@ -129,7 +131,7 @@ describe("KioskList — onglet Bureau « Écrans d'atelier » (#4)", () => {
     // Un seul bouton : l'écran déjà révoqué n'en a pas.
     fireEvent.click(screen.getByText(I.fr.stationRevokeBtn));
     expect(revokeKioskAction).not.toHaveBeenCalled();
-    expect(screen.getByText(I.fr.stationRevokeConfirm.replace("{label}", "Établi 2"))).toBeTruthy();
+    expect(screen.getByText(nb(I.fr.stationRevokeConfirm.replace("{label}", "Établi 2")))).toBeTruthy();
     fireEvent.click(screen.getByText(I.fr.stationRevokeYes));
     await waitFor(() => expect(revokeKioskAction).toHaveBeenCalledWith({ id: "k1" }));
     expect(run).toHaveBeenCalledWith(expect.any(Promise), I.fr.stationRevoked);

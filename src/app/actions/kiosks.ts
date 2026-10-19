@@ -15,10 +15,24 @@ async function kiosksResult(): Promise<ActionResult> {
   return { ok: true, kiosks: rows.map(toKioskDTO) };
 }
 
+/** Levée dans la transaction quand un écran actif porte déjà le libellé (annule tout). */
+class LabelTaken extends Error {}
+
+type Tx = Parameters<Parameters<typeof prisma.$transaction>[0]>[0];
+
+/** Deux écrans actifs ne portent jamais le même nom (tour 2) ; `exceptId` = l'écran renommé. */
+async function assertLabelFree(tx: Tx, label: string, exceptId?: string): Promise<void> {
+  const clash = await tx.kiosk.findFirst({
+    where: { label, revokedAt: null, ...(exceptId && { NOT: { id: exceptId } }) },
+  });
+  if (clash) throw new LabelTaken();
+}
+
 /**
  * Appaire l'écran d'où vient l'appel (#4), admin connecté. Ré-appairage : le Kiosk du cookie
  * courant (s'il est actif) est révoqué et le nouveau créé dans la même transaction (NB2).
  * Le cookie n'est posé qu'après la transaction : un échec laisse l'écran tel qu'il était.
+ * Le nom est vérifié après la révocation : ré-appairer sous son propre nom reste permis.
  */
 async function pairKiosk(input: unknown, actor: Actor): Promise<ActionResult> {
   const parsed = pairKioskSchema.safeParse(input);
@@ -27,6 +41,17 @@ async function pairKiosk(input: unknown, actor: Actor): Promise<ActionResult> {
   const name = kioskCookieName();
   const previous = jar.get(name)?.value;
   const token = newKioskToken();
+  try {
+    await pairInTransaction(previous, token, parsed.data.label, actor.user!.id);
+  } catch (e) {
+    if (e instanceof LabelTaken) return fail("KIOSK_LABEL_TAKEN");
+    throw e;
+  }
+  jar.set(name, token, kioskCookieOptions());
+  return kiosksResult();
+}
+
+async function pairInTransaction(previous: string | undefined, token: string, label: string, userId: string) {
   await prisma.$transaction(async (tx) => {
     if (previous) {
       await tx.kiosk.updateMany({
@@ -34,13 +59,9 @@ async function pairKiosk(input: unknown, actor: Actor): Promise<ActionResult> {
         data: { revokedAt: new Date() },
       });
     }
-    // ADMIN_WRITE garantit un utilisateur.
-    await tx.kiosk.create({
-      data: { label: parsed.data.label, tokenHash: hashKioskToken(token), createdById: actor.user!.id },
-    });
+    await assertLabelFree(tx, label);
+    await tx.kiosk.create({ data: { label, tokenHash: hashKioskToken(token), createdById: userId } });
   });
-  jar.set(name, token, kioskCookieOptions());
-  return kiosksResult();
 }
 
 /** Retire l'accès d'un écran. Idempotent : la date de la première révocation est gardée. */
@@ -54,8 +75,17 @@ async function revokeKiosk(input: unknown): Promise<ActionResult> {
 async function renameKiosk(input: unknown): Promise<ActionResult> {
   const parsed = renameKioskSchema.safeParse(input);
   if (!parsed.success) return failInvalid(parsed.error);
-  const { count } = await prisma.kiosk.updateMany({ where: { id: parsed.data.id }, data: { label: parsed.data.label } });
-  if (count === 0) return fail("Écran introuvable");
+  const { id, label } = parsed.data;
+  try {
+    const { count } = await prisma.$transaction(async (tx) => {
+      await assertLabelFree(tx, label, id);
+      return tx.kiosk.updateMany({ where: { id }, data: { label } });
+    });
+    if (count === 0) return fail("KIOSK_NOT_FOUND");
+  } catch (e) {
+    if (e instanceof LabelTaken) return fail("KIOSK_LABEL_TAKEN");
+    throw e;
+  }
   return kiosksResult();
 }
 

@@ -142,6 +142,10 @@ describe("retestUnitOfficeAction — Étant donné une unité non conforme vue a
 describe("getLiveDataAction — Étant donné un client connecté (#3)", () => {
   it("Quand il recharge, alors la garde OPEN_UNTIL_KIOSK le laisse passer et il reçoit unités, lots et livraisons, sans réglages ni gabarit", async () => {
     setSession(PROFILES.client.session);
-    expect(await getLiveDataAction()).toEqual({ ok: true, units: UNITS, batches: BATCHES, deliveries: DELIVERIES });
+    const res = await getLiveDataAction();
+    expect(res).toEqual({ ok: true, units: expect.any(Array), batches: BATCHES, deliveries: DELIVERIES });
+    // #4 (tour 2) : les unités arrivent sans libellé d'écran.
+    expect(res.units?.map((u) => [u.id, u.montage.ecran, u.test.ecran, u.verification.ecran]))
+      .toEqual([["sentinelle-unites", null, null, null]]);
   });
 });

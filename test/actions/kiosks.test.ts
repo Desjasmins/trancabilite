@@ -31,6 +31,10 @@ function fakeKioskTable() {
     Object.entries(where).every(([k, v]) => r[k as keyof Row] === v);
   db.kiosk.findUnique.mockImplementation(async ({ where }: { where: Record<string, unknown> }) =>
     table.find((r) => match(r, where)) ?? null);
+  db.kiosk.findFirst.mockImplementation(async ({ where }: { where: Record<string, unknown> & { NOT?: { id: string } } }) => {
+    const { NOT, ...rest } = where;
+    return table.find((r) => match(r, rest) && (!NOT || r.id !== NOT.id)) ?? null;
+  });
   db.kiosk.findMany.mockImplementation(async () => [...table].sort((a, b) => +b.createdAt - +a.createdAt));
   db.kiosk.create.mockImplementation(async ({ data }: { data: Partial<Row> }) => {
     const row = { id: `k${++seq}`, createdAt: new Date(Date.now() + seq), lastSeenAt: null, revokedAt: null, ...data } as Row;

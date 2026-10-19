@@ -67,7 +67,9 @@ function PairForm() {
   const { t, run, pending } = useApp();
   const router = useRouter();
   const [label, setLabel] = useState("");
+  const [confirming, setConfirming] = useState(false);
   const pair = async () => {
+    setConfirming(false);
     const res = await run(pairKioskAction({ label }), t.stationPaired);
     // Le cookie vient d'être posé : le rendu serveur relit l'état de l'écran.
     if (res.ok) router.refresh();
@@ -78,10 +80,30 @@ function PairForm() {
       <Label htmlFor="kiosk-label">{t.stationLabel}</Label>
       <Input id="kiosk-label" value={label} maxLength={60} className="h-12 text-base"
         onChange={(e) => setLabel(e.target.value)} />
-      <Button size="lg" className="h-12" disabled={pending || !label.trim()} onClick={pair}>
+      <Button size="lg" className="h-12" disabled={pending || !label.trim()} onClick={() => setConfirming(true)}>
         {t.stationPairBtn}
       </Button>
+      <PairConfirmDialog open={confirming} onClose={() => setConfirming(false)} onConfirm={pair} />
     </>
+  );
+}
+
+/** Confirmation avant l'appairage (tour 2) : l'appareil devient un écran d'atelier pour 400 jours. */
+function PairConfirmDialog({ open, onClose, onConfirm }: { open: boolean; onClose: () => void; onConfirm: () => void }) {
+  const { t } = useApp();
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{t.stationPairBtn}</DialogTitle>
+          <DialogDescription>{t.stationPairConfirm}</DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <DialogClose render={<Button variant="outline" />}>{t.cancel}</DialogClose>
+          <Button onClick={onConfirm}>{t.stationPairYes}</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

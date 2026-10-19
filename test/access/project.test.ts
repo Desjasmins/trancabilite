@@ -18,7 +18,8 @@ describe("projectSnapshot — Étant donné un instantané complet", () => {
     expect(out.settings.sub).toBe("S");
     expect(out.template).toEqual(defaultTemplate());
     expect(out.template.presetId).not.toBe("gabarit-maison");
-    expect(out.units).toBe(snapshot.units);
+    // #4 (tour 2) : les unités sont recopiées sans libellé d'écran (test dédié plus bas).
+    expect(out.units.map((u) => u.id)).toEqual(["U1"]);
     expect(snapshot.settings.ops).toEqual(["Ana", "Léo"]); // pas de mutation
   });
 
