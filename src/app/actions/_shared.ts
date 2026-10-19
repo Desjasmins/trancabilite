@@ -13,6 +13,7 @@ import type {
   DeliveryDTO,
   SettingsDTO,
   LabelTemplate,
+  KioskDTO,
 } from "@/lib/types";
 
 export interface ActionResult {
@@ -23,6 +24,7 @@ export interface ActionResult {
   deliveries?: DeliveryDTO[];
   settings?: SettingsDTO;
   template?: LabelTemplate;
+  kiosks?: KioskDTO[];
   createdIds?: string[];
   doneCount?: number;
   failCount?: number;
@@ -64,6 +66,8 @@ export async function recordOperation(
     result: EventResult;
     data?: unknown;
     note?: string;
+    /** Kiosk.id de l'écran appairé (#4) ; null = écran non identifié. */
+    stationId?: string | null;
   },
 ): Promise<void> {
   await prisma.$transaction(async (tx) => {
@@ -93,6 +97,7 @@ export async function recordOperation(
         operator: opts.operator,
         data: (opts.data as object) ?? undefined,
         note: opts.note || null,
+        stationId: opts.stationId ?? null,
       },
     });
 
@@ -113,8 +118,14 @@ export async function recordOperation(
  * Remise en essai d'une unité non conforme réparée : événement `rework` au journal
  * (le refus reste intact), déblocage sous verrou de version. Partagée par l'action
  * d'atelier (opérateur choisi à l'écran) et celle du Bureau (nom de session, #3).
+ * `stationId` : écran appairé d'où vient l'appel, quel que soit le compte (#4, B2).
  */
-export async function reworkUnit(unitId: string, operator: string, note: string): Promise<void> {
+export async function reworkUnit(
+  unitId: string,
+  operator: string,
+  note: string,
+  stationId: string | null,
+): Promise<void> {
   await prisma.$transaction(async (tx) => {
     const unit = await tx.unit.findUnique({ where: { id: unitId } });
     if (!unit) throw new BusinessError("Unité introuvable");
@@ -122,7 +133,7 @@ export async function reworkUnit(unitId: string, operator: string, note: string)
     if (!unit.currentOperationKey) throw new BusinessError("Unité sans étape courante");
 
     await tx.traceEvent.create({
-      data: { unitId, operationKey: unit.currentOperationKey, result: EventResult.rework, operator, note: note || null },
+      data: { unitId, operationKey: unit.currentOperationKey, result: EventResult.rework, operator, note: note || null, stationId },
     });
 
     const upd = await tx.unit.updateMany({

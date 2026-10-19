@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { useApp } from "./app-context";
 import { LabelView } from "./label-view";
+import { KioskList } from "./kiosk-panel";
 import { LabelEditor } from "./label-editor";
 import { StatusChip, TestDot, SectionHeader, EmptyState } from "./ui-bits";
 import { Field, inputCls } from "./atelier";
@@ -44,6 +45,8 @@ export function Bureau() {
       return <LabelEditor />;
     case "set":
       return <ViewSet />;
+    case "kiosks":
+      return <KioskList />;
   }
 }
 
@@ -232,12 +235,13 @@ function DetailPanel() {
               </div>
 
               <div className="my-3.5 flex">
-                <RelayCell label={t.stations.montage} who={u.montage.par} date={u.montage.date} />
-                <RelayCell label={t.stations.test} who={u.test.par} date={u.test.date} bad={bad} />
+                <RelayCell label={t.stations.montage} who={u.montage.par} date={u.montage.date} screen={u.montage.ecran} />
+                <RelayCell label={t.stations.test} who={u.test.par} date={u.test.date} screen={u.test.ecran} bad={bad} />
                 <RelayCell
                   label={t.stations.verification}
                   who={u.verification.par}
                   date={u.verification.date}
+                  screen={u.verification.ecran}
                 />
               </div>
 
@@ -294,11 +298,14 @@ function RelayCell({
   label,
   who,
   date,
+  screen,
   bad,
 }: {
   label: string;
   who: string | null;
   date: string | null;
+  /** Écran d'atelier de l'événement (#4) ; null → « Écran non identifié ». */
+  screen: string | null;
   bad?: boolean;
 }) {
   const { t } = useApp();
@@ -321,6 +328,7 @@ function RelayCell({
         {who || t.none}
       </div>
       {date && <div className="mt-0.5 font-mono text-[10px] text-faint">{fmt(date, t.none)}</div>}
+      {who && <div className="mt-0.5 text-[10px] text-faint">{screen || t.stationUnknown}</div>}
     </div>
   );
 }

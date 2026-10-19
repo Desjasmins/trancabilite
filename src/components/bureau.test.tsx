@@ -12,6 +12,7 @@ vi.mock("@/lib/export", () => ({ exportRegistryXlsx: vi.fn() }));
 vi.mock("@/lib/usb", () => ({ connectUSB: vi.fn(), isUsbConnected: () => false }));
 vi.mock("sonner", () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
 vi.mock("./app-context", () => ({ useApp: vi.fn() }));
+vi.mock("./kiosk-panel", () => ({ KioskList: () => <div>liste-des-ecrans</div> }));
 
 import { retestUnitOfficeAction, markPrintedAction } from "@/app/actions";
 import { printLabels } from "@/lib/print";
@@ -93,5 +94,11 @@ describe("Bureau, fiche d'unité — Étant donné l'écran écrit au journal (#
     vi.mocked(useApp).mockReturnValue(ctx(unit, "en"));
     render(<LangProvider><Bureau /></LangProvider>);
     expect(screen.getAllByText("Unidentified screen")).toHaveLength(1);
+  });
+
+  it("Quand l'onglet « Écrans d'atelier » est choisi, alors la liste des écrans s'affiche", () => {
+    vi.mocked(useApp).mockReturnValue({ ...ctx(unit), ui: { bureauTab: "kiosks" } } as never);
+    render(<LangProvider><Bureau /></LangProvider>);
+    expect(screen.getByText("liste-des-ecrans")).toBeTruthy();
   });
 });

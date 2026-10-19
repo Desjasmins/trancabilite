@@ -6,12 +6,17 @@ import type { Policy } from "@/lib/access/policy";
  * `withAccess` refuse un nom absent.
  */
 export const POLICIES = {
+  // Écrans d'atelier (#4) : admin seulement (la liste aussi : elle sert à les révoquer).
+  pairKioskAction: "ADMIN_WRITE",
+  revokeKioskAction: "ADMIN_WRITE",
+  renameKioskAction: "ADMIN_WRITE",
+  listKiosksAction: "ADMIN_WRITE",
   // Écritures du Bureau : admin ou superviseur.
   updateBatchAction: "STAFF_WRITE",
   saveSettingsAction: "STAFF_WRITE",
   saveTemplateAction: "STAFF_WRITE",
   retestUnitOfficeAction: "STAFF_WRITE",
-  // Atelier : ouvert temporairement, jusqu'à l'écran d'atelier identifié (#4).
+  // Atelier : ouvert temporairement, jusqu'à ce que le #5 exige l'écran (écran révoqué refusé dès le #4).
   createBatchAction: "OPEN_UNTIL_KIOSK",
   markPrintedAction: "OPEN_UNTIL_KIOSK",
   confirmMontageAction: "OPEN_UNTIL_KIOSK",

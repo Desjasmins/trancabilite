@@ -30,15 +30,18 @@ export interface UnitDTO {
   livraison: string; // id de la livraison ("" si aucune)
   dateCreation: string; // ISO
   etiquette: { par: string | null; date: string | null; imprimee: boolean };
-  montage: { par: string | null; date: string | null };
+  // `ecran` : libellé de l'écran d'atelier du dernier événement de l'étape (#4) ;
+  // null = écran non identifié (historique, écran non appairé ou disparu).
+  montage: { par: string | null; date: string | null; ecran: string | null };
   test: {
     par: string | null;
     date: string | null;
+    ecran: string | null;
     diel: TestResult;
     pol: TestResult;
     eff: TestResult;
   };
-  verification: { par: string | null; date: string | null };
+  verification: { par: string | null; date: string | null; ecran: string | null };
   nc: string;
 
   // Cache d'état (dérivé du journal d'événements)
@@ -124,6 +127,18 @@ export interface AuthUser {
   email: string;
   role: string | null;
 }
+
+/** Écran d'atelier appairé (#4), tel que l'onglet admin le liste. */
+export interface KioskDTO {
+  id: string;
+  label: string;
+  createdAt: string; // ISO
+  lastSeenAt: string | null;
+  revokedAt: string | null;
+}
+
+/** État de l'écran courant, résolu au rendu (#4). */
+export type ScreenState = { status: "none" } | { status: "revoked" } | { status: "paired"; label: string };
 
 export interface Snapshot {
   units: UnitDTO[];

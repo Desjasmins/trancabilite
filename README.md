@@ -86,13 +86,19 @@ Les comptes du Bureau sont des comptes Better Auth à trois rôles. Sans inscrip
 
 | Rôle | Ce qu'il peut faire |
 |---|---|
-| **Admin** | Tout ce que fait le superviseur, plus les routes d'administration des comptes de Better Auth (greffon `admin`). |
+| **Admin** | Tout ce que fait le superviseur, plus l'enregistrement des écrans d'atelier (onglet « Écrans d'atelier ») et les routes d'administration des comptes de Better Auth (greffon `admin`). |
 | **Superviseur** | Écritures du Bureau : modifier un lot, enregistrer les paramètres et les opérateurs, enregistrer le gabarit d'étiquette, remettre en essai une unité non conforme (le journal porte son nom). |
 | **Client** | Lecture seule du registre et des rapports. Il ne reçoit ni la liste des opérateurs ni le gabarit enregistré. Toute écriture du Bureau lui est refusée. |
 
 Un rôle hors de ces trois valeurs, ou un compte banni, n'a aucun droit au Bureau.
 
-**L'atelier reste ouvert** : ses actions (créer un lot, valider un poste, emballer, livraisons, synchro) ne demandent aucune connexion. Elles sont marquées `OPEN_UNTIL_KIOSK` en attendant l'identification des écrans d'atelier (tickets #4 et #5).
+**L'atelier reste ouvert** : ses actions (créer un lot, valider un poste, emballer, livraisons, synchro) ne demandent aucune connexion. Elles sont marquées `OPEN_UNTIL_KIOSK` jusqu'à ce que le ticket #5 exige un écran enregistré.
+
+### Écrans d'atelier (#4)
+
+Un admin connecté **sur l'écran lui-même** l'enregistre depuis l'onglet Atelier « Cet écran ». Le navigateur reçoit un cookie (`__Host-lb_kiosk` en production, `lb_kiosk_dev` en dev, 400 jours, httpOnly) ; la base (`kiosks`) n'en garde que l'empreinte SHA-256. Chaque événement validé depuis cet écran porte son id (`trace_events.stationId`) ; la fiche d'une unité affiche le nom de l'écran, ou « Écran non identifié » (historique, écran non enregistré). Un écran n'est jamais supprimé : l'admin lui **retire l'accès** (onglet Bureau « Écrans d'atelier »), et ses appels d'atelier sont alors refusés (sauf si un admin ou un superviseur est connecté). Un écran non enregistré travaille encore comme avant.
+
+**Déploiement du #4** : 1) appliquer le schéma (nouvelle table `kiosks`, index sur `trace_events.stationId` — ajout pur) ; 2) déployer le code ; 3) enregistrer chaque écran de l'usine. Ne pas encore poser `ACCESS_ENFORCE_FLOOR` (ticket #5).
 
 ## Modèle de données (`prisma/schema.prisma`)
 
@@ -101,6 +107,7 @@ Un rôle hors de ces trois valeurs, ou un compte banni, n'a aucun droit au Burea
 - **Batch** — lot de production (PO + projet).
 - **Delivery** — livraison (`LIV-AAAA-NNN`).
 - **Operator**, **Settings**, **LabelTemplate** — opérateurs, défauts, gabarit.
+- **Kiosk** — écran d'atelier enregistré (empreinte du jeton, dernière activité, révocation).
 
 ## Notes
 

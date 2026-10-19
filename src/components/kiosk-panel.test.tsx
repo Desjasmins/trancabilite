@@ -131,4 +131,19 @@ describe("KioskList — onglet Bureau « Écrans d'atelier » (#4)", () => {
     render(<KioskList />);
     await waitFor(() => expect(screen.getByText(I.fr.errors.FORBIDDEN)).toBeTruthy());
   });
+
+  it("Quand l'admin annule le retrait ou le renommage, alors aucune action n'est appelée", async () => {
+    vi.mocked(useApp).mockReturnValue(ctx("admin"));
+    vi.mocked(listKiosksAction).mockResolvedValue({ ok: true, kiosks: [K1] });
+    render(<KioskList />);
+    await waitFor(() => expect(screen.getByText("Établi 2")).toBeTruthy());
+    fireEvent.click(screen.getByText(I.fr.stationRevokeBtn));
+    fireEvent.click(screen.getByText(I.fr.cancel));
+    await waitFor(() => expect(screen.queryByText(I.fr.stationRevokeYes)).toBeNull());
+    fireEvent.click(screen.getByText(I.fr.stationRenameBtn));
+    fireEvent.click(screen.getByText(I.fr.cancel));
+    await waitFor(() => expect(screen.queryByLabelText(I.fr.stationLabel)).toBeNull());
+    expect(revokeKioskAction).not.toHaveBeenCalled();
+    expect(renameKioskAction).not.toHaveBeenCalled();
+  });
 });

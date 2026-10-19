@@ -6,10 +6,11 @@ import { useApp } from "./app-context";
 import { Atelier } from "./atelier";
 import { Bureau } from "./bureau";
 import { LoginGate } from "./login-gate";
+import { ThisScreen } from "./kiosk-panel";
 import { signOut } from "@/lib/auth-client";
 import { queueFor } from "@/lib/status";
 import { tryReconnectUSB } from "@/lib/usb";
-import type { StationKey } from "@/lib/types";
+import type { ScreenState, StationKey } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 const STATION_ORDER: StationKey[] = [
@@ -20,7 +21,7 @@ const STATION_ORDER: StationKey[] = [
   "emballage",
 ];
 
-export function AppRoot() {
+export function AppRoot({ screen }: { screen: ScreenState }) {
   const { units, template, ui, setUi, t, lang, setLang, user } = useApp();
   const router = useRouter();
 
@@ -51,6 +52,8 @@ export function AppRoot() {
     ["rep", t.repTitle],
     ["label", t.tabLabel],
     ["set", t.setTitle],
+    // Écrans d'atelier (#4) : admin seulement (ADMIN_WRITE côté serveur).
+    ...(role === "admin" ? [["kiosks", t.tabStations] as [typeof ui.bureauTab, string]] : []),
   ];
 
   const doSignOut = async () => {
@@ -109,7 +112,7 @@ export function AppRoot() {
           ]}
           value={ui.mode}
           onChange={(v) =>
-            setUi({ mode: v as "atelier" | "bureau", station: null, scanUnit: null, openId: null })
+            setUi({ mode: v as "atelier" | "bureau", station: null, screen: false, scanUnit: null, openId: null })
           }
         />
         <Toggle
@@ -127,8 +130,8 @@ export function AppRoot() {
         {ui.mode === "atelier" ? (
           <>
             <NavBtn
-              on={ui.station === null}
-              onClick={() => setUi({ station: null, scanUnit: null })}
+              on={ui.station === null && !ui.screen}
+              onClick={() => setUi({ station: null, screen: false, scanUnit: null })}
             >
               ⌂ {t.postes}
             </NavBtn>
@@ -136,7 +139,7 @@ export function AppRoot() {
               <NavBtn
                 key={k}
                 on={ui.station === k}
-                onClick={() => setUi({ station: k, scanUnit: null, lastCreated: [] })}
+                onClick={() => setUi({ station: k, screen: false, scanUnit: null, lastCreated: [] })}
               >
                 {t.stations[k]}
                 {counts[k] != null && (
@@ -146,6 +149,9 @@ export function AppRoot() {
                 )}
               </NavBtn>
             ))}
+            <NavBtn on={ui.screen} onClick={() => setUi({ station: null, screen: true, scanUnit: null })}>
+              {t.tabThisScreen}
+            </NavBtn>
           </>
         ) : user ? (
           bureauTabs.map(([k, label]) => (
@@ -162,7 +168,13 @@ export function AppRoot() {
 
       {/* ---- Main ---- */}
       <main className="mx-auto w-full max-w-[1120px] px-[18px] pb-24 pt-[22px]">
-        {ui.mode === "atelier" ? <Atelier /> : user ? <Bureau /> : <LoginGate />}
+        {ui.mode === "atelier" ? (
+          ui.screen ? <ThisScreen screen={screen} /> : <Atelier />
+        ) : user ? (
+          <Bureau />
+        ) : (
+          <LoginGate />
+        )}
       </main>
     </>
   );
