@@ -10,6 +10,8 @@ import { prisma } from "@/lib/db";
 import { resetDbMock, type PrismaMock } from "../mocks/db";
 import { setSession } from "../mocks/auth";
 import { PROFILES } from "../access/profiles";
+import { cookies, resetHeadersMock } from "../mocks/headers";
+import { kioskCookieName } from "@/lib/access/kiosk";
 import { resetQueriesMock, UNITS, BATCHES, DELIVERIES, SETTINGS, TEMPLATE } from "./queries-mock";
 import {
   createDeliveryAction, closeDeliveryAction, saveSettingsAction, saveTemplateAction, getLiveDataAction,
@@ -17,7 +19,7 @@ import {
 } from "@/app/actions";
 
 const db = prisma as unknown as PrismaMock;
-beforeEach(() => { resetDbMock(); resetQueriesMock(); setSession(PROFILES.admin.session); });
+beforeEach(() => { resetDbMock(); resetQueriesMock(); resetHeadersMock(); setSession(PROFILES.admin.session); });
 
 describe("livraisons — figé (#2)", () => {
   it("Quand l'id manque, alors « ID requis »", async () => {
@@ -97,11 +99,20 @@ describe("retestUnitOfficeAction — Étant donné une unité non conforme vue a
     const res = await retestUnitOfficeAction({ unitId: "U1", operator: "Usurpateur", note: "réparé" });
     expect(res).toEqual({ ok: true, units: UNITS });
     expect(db.traceEvent.create).toHaveBeenCalledWith({ data: {
-      unitId: "U1", operationKey: "test", result: "rework", operator: "Sam", note: "réparé",
+      unitId: "U1", operationKey: "test", result: "rework", operator: "Sam", note: "réparé", stationId: null,
     } });
     expect(db.unit.updateMany).toHaveBeenCalledWith({
       where: { id: "U1", version: 5 }, data: { blocked: false, nc: null, version: { increment: 1 } },
     });
+  });
+
+  it("Quand un superviseur remet en essai depuis un écran appairé, alors stationId = l'écran, opérateur = session (#4)", async () => {
+    (await cookies()).set(kioskCookieName(), "jeton-k7");
+    db.kiosk.findUnique.mockResolvedValue({ id: "k7", label: "Établi 7", revokedAt: null, lastSeenAt: new Date() });
+    setSession(PROFILES.superviseur.session);
+    db.unit.findUnique.mockResolvedValue(blocked);
+    await retestUnitOfficeAction({ unitId: "U1", note: "r" });
+    expect(db.traceEvent.create.mock.calls[0][0].data).toMatchObject({ stationId: "k7", operator: "Sam" });
   });
 
   it("Quand la note est absente, alors note null", async () => {

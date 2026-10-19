@@ -9,7 +9,10 @@ vi.mock("@/lib/auth", () => import("../mocks/auth"));
 import { prisma } from "@/lib/db";
 import { resetDbMock, type PrismaMock } from "../mocks/db";
 import { setSession } from "../mocks/auth";
+import { PROFILES } from "../access/profiles";
 import { resetQueriesMock, loadUnits, UNITS } from "./queries-mock";
+import { cookies, resetHeadersMock } from "../mocks/headers";
+import { kioskCookieName } from "@/lib/access/kiosk";
 import {
   confirmMontageAction, confirmMontageBulkAction, retestUnitAction,
   confirmTestAction, confirmVerifAction, packUnitAction,
@@ -33,6 +36,7 @@ function unitRow(over: Record<string, unknown> = {}) {
 beforeEach(() => {
   resetDbMock();
   resetQueriesMock();
+  resetHeadersMock();
   // #3 : aucune session — l'atelier reste ouvert (OPEN_UNTIL_KIOSK), y compris pour un anonyme.
   setSession(null);
   db.unit.updateMany.mockResolvedValue({ count: 1 });
@@ -52,6 +56,7 @@ describe("recordOperation via confirmMontageAction — figé (#2)", () => {
     });
     expect(db.traceEvent.create).toHaveBeenCalledWith({ data: {
       unitId: "U1", operationKey: "montage", result: "done", operator: "Ana", data: undefined, note: null,
+      stationId: null, // #4 : aucun écran appairé → null (écran non identifié)
     } });
     expect(db.unit.updateMany).toHaveBeenCalledWith({
       where: { id: "U1", version: 3 },
@@ -118,7 +123,7 @@ describe("confirmTestAction — figé (#2)", () => {
     expect(await confirmTestAction(base)).toEqual({ ok: true, units: UNITS });
     expect(db.traceEvent.create).toHaveBeenCalledWith({ data: {
       unitId: "U1", operationKey: "test", result: "pass", operator: "Ana",
-      data: { diel: "accept", pol: "accept", eff: "accept" }, note: null,
+      data: { diel: "accept", pol: "accept", eff: "accept" }, note: null, stationId: null,
     } });
     expect(db.unit.updateMany.mock.calls[0][0].data).toEqual({
       currentOperationKey: "verification", blocked: false, nc: null, version: { increment: 1 },
@@ -187,7 +192,7 @@ describe("retestUnitAction — figé (#2)", () => {
     expect(await retestUnitAction(input)).toEqual({ ok: true, units: UNITS });
     expect(db.unit.findUnique).toHaveBeenCalledWith({ where: { id: "U1" } });
     expect(db.traceEvent.create).toHaveBeenCalledWith({ data: {
-      unitId: "U1", operationKey: "test", result: "rework", operator: "Ana", note: "réparé",
+      unitId: "U1", operationKey: "test", result: "rework", operator: "Ana", note: "réparé", stationId: null,
     } });
     expect(db.unit.updateMany).toHaveBeenCalledWith({
       where: { id: "U1", version: 5 }, data: { blocked: false, nc: null, version: { increment: 1 } },
@@ -243,5 +248,45 @@ describe("packUnitAction — figé (#2)", () => {
     expect(await packUnitAction({ unitId: "U1", deliveryId: "L1" })).toEqual({ ok: true, units: UNITS });
     expect(db.delivery.findUnique).toHaveBeenCalledWith({ where: { id: "L1" } });
     expect(db.unit.update).toHaveBeenCalledWith({ where: { id: "U1" }, data: { deliveryId: "L1" } });
+  });
+});
+
+// #4 : l'écran appairé est écrit au journal ; l'opérateur choisi à l'écran n'est jamais écrasé.
+describe("stationId — Étant donné un écran d'atelier appairé (#4)", () => {
+  beforeEach(async () => {
+    (await cookies()).set(kioskCookieName(), "jeton-k7");
+    db.kiosk.findUnique.mockResolvedValue({ id: "k7", label: "Établi 7", revokedAt: null, lastSeenAt: new Date() });
+  });
+  const ok = (key: string) => unitRow({ currentOperationKey: key });
+
+  it.each([
+    ["confirmMontageAction", () => confirmMontageAction({ unitId: "U1", operator: "Ana" }), "montage"],
+    ["confirmMontageBulkAction", () => confirmMontageBulkAction({ unitIds: ["U1"], operator: "Ana" }), "montage"],
+    ["confirmTestAction", () => confirmTestAction({ unitId: "U1", operator: "Ana", diel: "accept", pol: "accept", eff: "refus", nc: "x" }), "test"],
+    ["confirmVerifAction", () => confirmVerifAction({ unitId: "U1", operator: "Ana" }), "verification"],
+  ])("Quand %s passe, alors l'événement porte stationId = id de l'écran et l'opérateur saisi", async (_n, call, key) => {
+    db.unit.findUnique.mockResolvedValue(ok(key));
+    expect((await call()).ok).toBe(true);
+    expect(db.traceEvent.create.mock.calls[0][0].data).toMatchObject({ stationId: "k7", operator: "Ana" });
+  });
+
+  it("Quand retestUnitAction passe, alors l'événement rework porte l'écran et l'opérateur saisi", async () => {
+    db.unit.findUnique.mockResolvedValue({ id: "U1", blocked: true, currentOperationKey: "test", version: 5 });
+    expect((await retestUnitAction({ unitId: "U1", operator: "Léo", note: "r" })).ok).toBe(true);
+    expect(db.traceEvent.create.mock.calls[0][0].data).toMatchObject({ stationId: "k7", operator: "Léo", result: "rework" });
+  });
+
+  it("Quand un admin est aussi connecté sur l'écran, alors l'opérateur reste celui choisi à l'écran", async () => {
+    setSession(PROFILES.admin.session);
+    db.unit.findUnique.mockResolvedValue(ok("montage"));
+    await confirmMontageAction({ unitId: "U1", operator: "Ana" });
+    expect(db.traceEvent.create.mock.calls[0][0].data).toMatchObject({ stationId: "k7", operator: "Ana" });
+  });
+
+  it("Quand le cookie est inconnu, alors l'atelier passe toujours, stationId null", async () => {
+    db.kiosk.findUnique.mockResolvedValue(null);
+    db.unit.findUnique.mockResolvedValue(ok("montage"));
+    expect((await confirmMontageAction({ unitId: "U1", operator: "Ana" })).ok).toBe(true);
+    expect(db.traceEvent.create.mock.calls[0][0].data.stationId).toBeNull();
   });
 });

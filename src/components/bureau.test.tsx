@@ -67,3 +67,31 @@ describe("Bureau, fiche d'unité — Étant donné une unité non conforme (#3, 
     expect(markPrintedAction).toHaveBeenCalledWith({ unitIds: ["U1"] });
   });
 });
+
+describe("Bureau, fiche d'unité — Étant donné l'écran écrit au journal (#4)", () => {
+  const ctx = (unit: unknown, lang: "fr" | "en" = "fr") => ({
+    units: [unit], batches: [], deliveries: [], operations: [], routes: [],
+    settings: { sub: "", proj: "", ops: [] }, template: defaultTemplate(),
+    ui: { bureauTab: "reg", query: "", filterStatus: "", openId: "U1", client: false },
+    setUi: vi.fn(), run: vi.fn(), t: I[lang], lang, pending: false, user: null,
+  }) as unknown as ReturnType<typeof useApp>;
+  const unit = {
+    ...blocked, blocked: false, nc: "",
+    montage: { par: "Ana", date: null, ecran: "Établi 2" },
+    test: { par: "Léo", date: null, diel: "accept", pol: "accept", eff: "accept", ecran: null },
+    verification: { par: null, date: null, ecran: null },
+  };
+
+  it("Quand une étape porte un écran, alors son nom ; sans écran, « Écran non identifié » ; étape non faite, rien", () => {
+    vi.mocked(useApp).mockReturnValue(ctx(unit));
+    render(<LangProvider><Bureau /></LangProvider>);
+    expect(screen.getByText("Établi 2")).toBeTruthy();
+    expect(screen.getAllByText(I.fr.stationUnknown)).toHaveLength(1);
+  });
+
+  it("Quand la langue est l'anglais, alors « Unidentified screen »", () => {
+    vi.mocked(useApp).mockReturnValue(ctx(unit, "en"));
+    render(<LangProvider><Bureau /></LangProvider>);
+    expect(screen.getAllByText("Unidentified screen")).toHaveLength(1);
+  });
+});

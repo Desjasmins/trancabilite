@@ -33,4 +33,14 @@ describe("projectSnapshot — Étant donné un instantané complet", () => {
     const live = { ok: true, units: [] };
     expect(projectSnapshot(live, PROFILES.client.actor)).toEqual({ ok: true, units: [] });
   });
+
+  it("Quand un client est connecté sur un écran appairé, alors projection complète : c'est l'écran qui est autorisé (NB-b, #4)", () => {
+    const actor = { ...PROFILES.client.actor, kiosk: { id: "k1", label: "Établi 2" } };
+    expect(projectSnapshot(snapshot, actor)).toBe(snapshot);
+  });
+
+  it("Quand un client est sur un écran révoqué, alors projection client", () => {
+    const actor = { ...PROFILES.client.actor, kioskRevoked: true };
+    expect(projectSnapshot(snapshot, actor).settings.ops).toEqual([]);
+  });
 });
