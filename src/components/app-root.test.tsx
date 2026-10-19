@@ -9,7 +9,10 @@ vi.mock("./app-context", () => ({ useApp: vi.fn() }));
 vi.mock("./atelier", () => ({ Atelier: () => <div>vue-atelier</div> }));
 vi.mock("./bureau", () => ({ Bureau: () => <div>vue-bureau</div> }));
 vi.mock("./login-gate", () => ({ LoginGate: () => <div>vue-connexion</div> }));
-vi.mock("./kiosk-panel", () => ({ ThisScreen: ({ screen }: { screen: { status: string } }) => <div>vue-ecran-{screen.status}</div> }));
+vi.mock("./kiosk-panel", () => ({
+  ThisScreen: ({ screen }: { screen: { status: string } }) => <div>vue-ecran-{screen.status}</div>,
+  FloorGuardBanner: () => <div>bandeau-garde</div>,
+}));
 
 import { useApp } from "./app-context";
 import { AppRoot } from "./app-root";
@@ -18,7 +21,8 @@ import { I } from "@/lib/i18n";
 
 afterEach(cleanup);
 
-const ctx = (ui: Record<string, unknown>, role: string | null, setUi = vi.fn()) => ({
+const ctx = (ui: Record<string, unknown>, role: string | null, setUi = vi.fn(), floorGuardOff = false) => ({
+  floorGuardOff,
   units: [], template: defaultTemplate(), t: I.fr, lang: "fr", setLang: vi.fn(), setUi,
   ui: { mode: "atelier", station: null, screen: false, bureauTab: "reg", client: false, ...ui },
   user: role ? { id: "u", name: "Ada", email: "a@test.invalid", role } : null,
@@ -54,6 +58,17 @@ describe("AppRoot — onglets des écrans d'atelier (#4)", () => {
       vi.mocked(useApp).mockReturnValue(ctx({ mode: "bureau" }, role));
       render(<AppRoot screen={{ status: "none" }} />);
       expect(screen.queryByText(I.fr.tabStations) !== null).toBe(visible);
+    },
+  );
+});
+
+describe("AppRoot — bandeau « garde de l'atelier inactive » (#5)", () => {
+  it.each([["bureau", true, true], ["bureau", false, false], ["atelier", true, false]])(
+    "Quand le mode est %s et floorGuardOff vaut %s, alors bandeau dans l'en-tête : %s",
+    (mode, off, visible) => {
+      vi.mocked(useApp).mockReturnValue(ctx({ mode }, "admin", vi.fn(), off));
+      render(<AppRoot screen={{ status: "none" }} />);
+      expect(screen.queryByText("bandeau-garde") !== null).toBe(visible);
     },
   );
 });

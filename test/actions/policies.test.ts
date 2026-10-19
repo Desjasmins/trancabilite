@@ -25,9 +25,21 @@ describe("POLICIES — Étant donné le tableau unique des politiques (défaut f
     expect(admin).toEqual(["listKiosksAction", "pairKioskAction", "renameKioskAction", "revokeKioskAction"]);
   });
 
-  it("Quand on liste le reste, alors c'est OPEN_UNTIL_KIOSK, nommé comme temporaire (le #5 l'activera)", () => {
-    const others = Object.entries(POLICIES).filter(([, p]) => p !== "STAFF_WRITE" && p !== "ADMIN_WRITE");
-    expect(others).toHaveLength(11);
-    for (const [, p] of others) expect(p).toBe("OPEN_UNTIL_KIOSK");
+  it("Quand on liste FLOOR_WRITE, alors exactement les écritures de l'atelier, création de lot comprise (NB8)", () => {
+    const floor = Object.entries(POLICIES).filter(([, p]) => p === "FLOOR_WRITE").map(([n]) => n).sort();
+    expect(floor).toEqual([
+      "closeDeliveryAction", "confirmMontageAction", "confirmMontageBulkAction", "confirmTestAction",
+      "confirmVerifAction", "createBatchAction", "createDeliveryAction", "markPrintedAction",
+      "packUnitAction", "retestUnitAction",
+    ]);
+  });
+
+  it("Quand on liste READ, alors la synchro live seule (#5 ; getUnitEventsAction n'existe pas)", () => {
+    const read = Object.entries(POLICIES).filter(([, p]) => p === "READ").map(([n]) => n);
+    expect(read).toEqual(["getLiveDataAction"]);
+  });
+
+  it("Quand on compte les politiques, alors aucune autre (plus d'OPEN_UNTIL_KIOSK)", () => {
+    expect(new Set(Object.values(POLICIES))).toEqual(new Set(["ADMIN_WRITE", "STAFF_WRITE", "FLOOR_WRITE", "READ"]));
   });
 });

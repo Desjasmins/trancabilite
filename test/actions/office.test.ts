@@ -140,7 +140,7 @@ describe("retestUnitOfficeAction — Étant donné une unité non conforme vue a
 });
 
 describe("getLiveDataAction — Étant donné un client connecté (#3)", () => {
-  it("Quand il recharge, alors la garde OPEN_UNTIL_KIOSK le laisse passer et il reçoit unités, lots et livraisons, sans réglages ni gabarit", async () => {
+  it("Quand il recharge, alors la garde READ le laisse passer (tout compte valide) et il reçoit unités, lots et livraisons, sans réglages ni gabarit", async () => {
     setSession(PROFILES.client.session);
     const res = await getLiveDataAction();
     expect(res).toEqual({ ok: true, units: expect.any(Array), batches: BATCHES, deliveries: DELIVERIES });

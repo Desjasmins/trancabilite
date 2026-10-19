@@ -1,17 +1,19 @@
 // @vitest-environment jsdom
-import { describe, it, expect, afterEach, vi } from "vitest";
+import { describe, it, expect, afterEach, beforeEach, vi } from "vitest";
 import { render, cleanup, act } from "@testing-library/react";
 
 vi.mock("@/app/actions", () => ({ getLiveDataAction: vi.fn(async () => ({ ok: false })) }));
 vi.mock("@/lib/realtime", () => ({
   subscribeSync: () => () => {}, notifyChange: vi.fn(), realtimeEnabled: () => false,
 }));
+const refresh = vi.fn();
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh }) }));
 vi.mock("sonner", () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
 
 import { toast } from "sonner";
 import { LangProvider } from "./lang-provider";
 import { AppProvider, useApp } from "./app-context";
-import type { ActionResult } from "@/app/actions";
+import { getLiveDataAction, type ActionResult } from "@/app/actions";
 import { I } from "@/lib/i18n";
 import type { Snapshot } from "@/lib/types";
 
@@ -39,5 +41,49 @@ describe("run() — Étant donné le résultat d'une Server Action (#3)", () => 
     const res = await runWith(Promise.reject(new Error("fetch failed")));
     expect(toast.error).toHaveBeenCalledWith(I.fr.errors.network);
     expect(res).toEqual({ ok: false, error: I.fr.errors.network });
+  });
+});
+
+// #5 : la synchro s'arrête quand le serveur retire l'accès, puis la page se recharge.
+describe("synchro live — Étant donné un refus d'accès du serveur (#5)", () => {
+  const live = vi.mocked(getLiveDataAction);
+  beforeEach(() => { live.mockReset(); refresh.mockClear(); });
+  const mount = (props: { live?: boolean } = {}) =>
+    render(<LangProvider><AppProvider initial={initial} user={null} {...props}><span /></AppProvider></LangProvider>);
+  const online = async () => { await act(async () => { window.dispatchEvent(new Event("online")); await Promise.resolve(); }); };
+
+  it.each(["AUTH_REQUIRED", "KIOSK_REVOKED"])("Quand le rechargement rend %s, alors la synchro s'arrête et la page se recharge une fois", async (code) => {
+    live.mockResolvedValue({ ok: false, error: code });
+    mount();
+    await online();
+    expect(live).toHaveBeenCalledTimes(1);
+    expect(refresh).toHaveBeenCalledTimes(1);
+    await online();
+    expect(live).toHaveBeenCalledTimes(1);
+    expect(refresh).toHaveBeenCalledTimes(1);
+  });
+
+  it("Quand le rechargement rend une autre erreur (FORBIDDEN, GENERIC), alors la synchro continue sans recharger", async () => {
+    live.mockResolvedValue({ ok: false, error: "GENERIC" });
+    mount();
+    await online();
+    await online();
+    expect(live).toHaveBeenCalledTimes(2);
+    expect(refresh).not.toHaveBeenCalled();
+  });
+
+  it("Quand live vaut false (porte sans identité), alors aucune synchro", async () => {
+    mount({ live: false });
+    await online();
+    expect(live).not.toHaveBeenCalled();
+  });
+
+  it("Quand floorGuardOff est passé, alors useApp l'expose (faux par défaut)", () => {
+    const seen: boolean[] = [];
+    function Probe() { seen.push(useApp().floorGuardOff); return null; }
+    render(<LangProvider><AppProvider initial={initial} user={null} live={false}><Probe /></AppProvider></LangProvider>);
+    render(<LangProvider><AppProvider initial={initial} user={null} live={false} floorGuardOff><Probe /></AppProvider></LangProvider>);
+    expect(seen).toContain(false);
+    expect(seen).toContain(true);
   });
 });

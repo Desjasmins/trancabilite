@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
 vi.mock("next/headers", () => import("../mocks/headers"));
 vi.mock("@/lib/auth", () => import("../mocks/auth"));
@@ -92,5 +92,73 @@ describe("withAccess — Étant donné le tableau POLICIES", () => {
     expect(await withAccess("pairKioskAction", handler)({})).toEqual({ ok: true });
     setSession(PROFILES.superviseur.session);
     expect(await withAccess("pairKioskAction", handler)({})).toEqual({ ok: false, error: "FORBIDDEN" });
+  });
+});
+
+// #5, TDD §12 B7 : le drapeau n'assouplit que l'acteur entièrement nul.
+describe("withAccess — Étant donné le drapeau ACCESS_ENFORCE_FLOOR (#5)", () => {
+  const revokedCookie = async () => {
+    (await cookies()).set(kioskCookieName(), "jeton-revoque");
+    db.kiosk.findUnique.mockResolvedValue({ id: "k1", label: "É", revokedAt: new Date(), lastSeenAt: null });
+  };
+  const pairedCookie = async () => {
+    (await cookies()).set(kioskCookieName(), "jeton");
+    db.kiosk.findUnique.mockResolvedValue({ id: "k7", label: "Établi 2", revokedAt: null, lastSeenAt: new Date() });
+  };
+  afterEach(() => vi.unstubAllEnvs());
+
+  describe("drapeau éteint", () => {
+    beforeEach(() => {
+      vi.stubEnv("ACCESS_ENFORCE_FLOOR", "false");
+      vi.spyOn(console, "warn").mockImplementation(() => {});
+    });
+    it("Quand un client sans écran crée un lot, alors FORBIDDEN, sans appeler l'action", async () => {
+      setSession(PROFILES.client.session);
+      expect(await withAccess("createBatchAction", handler)({})).toEqual({ ok: false, error: "FORBIDDEN" });
+      expect(handler).not.toHaveBeenCalled();
+    });
+    it("Quand un écran révoqué crée un lot, alors KIOSK_REVOKED", async () => {
+      await revokedCookie();
+      expect(await withAccess("createBatchAction", handler)({})).toEqual({ ok: false, error: "KIOSK_REVOKED" });
+      expect(handler).not.toHaveBeenCalled();
+    });
+    it("Quand un banni crée un lot, alors FORBIDDEN (il n'est pas l'acteur nul)", async () => {
+      setSession(PROFILES.banni.session);
+      expect(await withAccess("createBatchAction", handler)({})).toEqual({ ok: false, error: "FORBIDDEN" });
+      expect(handler).not.toHaveBeenCalled();
+    });
+    it("Quand un rôle inconnu recharge les données, alors FORBIDDEN (B6)", async () => {
+      setSession(PROFILES.inconnu.session);
+      expect(await withAccess("getLiveDataAction", handler)({})).toEqual({ ok: false, error: "FORBIDDEN" });
+    });
+    it("Quand un anonyme sans cookie crée un lot ou recharge, alors il passe (comportement d'aujourd'hui)", async () => {
+      expect(await withAccess("createBatchAction", handler)({})).toEqual({ ok: true });
+      expect(await withAccess("getLiveDataAction", handler)({})).toEqual({ ok: true });
+      expect(handler).toHaveBeenCalledWith({}, PROFILES.anonyme.actor);
+    });
+  });
+
+  describe("drapeau posé", () => {
+    beforeEach(() => vi.stubEnv("ACCESS_ENFORCE_FLOOR", "true"));
+    it("Quand un anonyme sans cookie écrit ou recharge, alors AUTH_REQUIRED, sans aucune lecture de base au-delà de la session", async () => {
+      for (const name of ["createBatchAction", "confirmMontageAction", "getLiveDataAction"] as const) {
+        expect(await withAccess(name, handler)({})).toEqual({ ok: false, error: "AUTH_REQUIRED" });
+      }
+      expect(handler).not.toHaveBeenCalled();
+    });
+    it("Quand un client est sur un écran appairé, alors il écrit au titre de l'écran (NB-b)", async () => {
+      await pairedCookie();
+      setSession(PROFILES.client.session);
+      expect(await withAccess("confirmMontageAction", handler)({})).toEqual({ ok: true });
+      expect(handler).toHaveBeenCalledWith({}, { ...PROFILES.client.actor, kiosk: { id: "k7", label: "Établi 2" } });
+    });
+    it("Quand un client sans écran recharge, alors il lit (READ : tout compte valide)", async () => {
+      setSession(PROFILES.client.session);
+      expect(await withAccess("getLiveDataAction", handler)({})).toEqual({ ok: true });
+    });
+    it("Quand un écran appairé sans compte écrit, alors il passe", async () => {
+      await pairedCookie();
+      expect(await withAccess("createBatchAction", handler)({})).toEqual({ ok: true });
+    });
   });
 });

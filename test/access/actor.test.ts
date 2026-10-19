@@ -47,7 +47,7 @@ describe("getActor — Étant donné une session Better Auth", () => {
 
   it("Quand banned vaut true, alors aucun utilisateur, quel que soit le rôle (Better Auth ne filtre pas)", async () => {
     setSession(sessionFor({ id: "u", name: "N", email: "n@test.invalid", role: "superviseur", banned: true }));
-    expect(await getActor({ mode: "action" })).toEqual({ user: null, ...NO_KIOSK });
+    expect(await getActor({ mode: "action" })).toEqual({ user: null, banned: true, ...NO_KIOSK });
   });
 });
 
@@ -72,21 +72,21 @@ function prismaCallsExceptKioskFind(): number {
 
 describe("getActor — Étant donné le cookie d'écran d'atelier (#4)", () => {
   it("Quand aucun cookie, alors aucun écran et aucune lecture de la table kiosks", async () => {
-    expect(await getActor({ mode: "action" })).toEqual({ user: null, kiosk: null, kioskRevoked: false });
+    expect(await getActor({ mode: "action" })).toEqual({ user: null, banned: false, kiosk: null, kioskRevoked: false });
     expect(db.kiosk.findUnique).not.toHaveBeenCalled();
   });
 
   it("Quand le cookie est inconnu en base, alors il compte comme absent (pas révoqué, §13)", async () => {
     await withKioskCookie("jeton-inconnu");
     db.kiosk.findUnique.mockResolvedValue(null);
-    expect(await getActor({ mode: "action" })).toEqual({ user: null, kiosk: null, kioskRevoked: false });
+    expect(await getActor({ mode: "action" })).toEqual({ user: null, banned: false, kiosk: null, kioskRevoked: false });
     expect(db.kiosk.findUnique).toHaveBeenCalledWith({ where: { tokenHash: hashKioskToken("jeton-inconnu") } });
   });
 
   it("Quand l'écran est révoqué, alors kiosk null et kioskRevoked vrai, sans rafraîchir", async () => {
     await withKioskCookie("jeton-k1");
     db.kiosk.findUnique.mockResolvedValue(kioskRow({ revokedAt: new Date(), lastSeenAt: null }));
-    expect(await getActor({ mode: "action" })).toEqual({ user: null, kiosk: null, kioskRevoked: true });
+    expect(await getActor({ mode: "action" })).toEqual({ user: null, banned: false, kiosk: null, kioskRevoked: true });
     expect(db.kiosk.update).not.toHaveBeenCalled();
   });
 
@@ -95,7 +95,7 @@ describe("getActor — Étant donné le cookie d'écran d'atelier (#4)", () => {
     setSession(PROFILES.client.session);
     db.kiosk.findUnique.mockResolvedValue(kioskRow());
     expect(await getActor({ mode: "action" })).toEqual({
-      user: PROFILES.client.actor.user, kiosk: { id: "k1", label: "Établi 2" }, kioskRevoked: false,
+      user: PROFILES.client.actor.user, banned: false, kiosk: { id: "k1", label: "Établi 2" }, kioskRevoked: false,
     });
   });
 
@@ -134,6 +134,6 @@ describe("getActor — Étant donné le cookie d'écran d'atelier (#4)", () => {
     await withKioskCookie("jeton-k1");
     setSession(PROFILES.banni.session);
     db.kiosk.findUnique.mockResolvedValue(kioskRow());
-    expect(await getActor({ mode: "action" })).toEqual({ user: null, kiosk: { id: "k1", label: "Établi 2" }, kioskRevoked: false });
+    expect(await getActor({ mode: "action" })).toEqual({ user: null, banned: true, kiosk: { id: "k1", label: "Établi 2" }, kioskRevoked: false });
   });
 });
