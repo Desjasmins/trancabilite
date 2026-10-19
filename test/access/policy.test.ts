@@ -42,8 +42,12 @@ const withScreen = (name: ProfileName, screen: typeof VALID | typeof REVOKED): A
 
 // Écran valide : c'est l'écran qui est autorisé (NB-b), quel que soit le compte, drapeau posé ou non.
 const FLOOR_VALID: Record<ProfileName, boolean> = { anonyme: true, inconnu: true, banni: true, client: true, superviseur: true, admin: true };
-// Écran révoqué : refusé, sauf staff connecté (NB-a), drapeau posé ou non.
-const FLOOR_REVOKED: Record<ProfileName, boolean> = { anonyme: false, inconnu: false, banni: false, client: false, superviseur: true, admin: true };
+// Écran révoqué : on retombe sur le compte (règle de l'ADR), drapeau posé ou non. En écriture,
+// seul le staff passe (NB-a) ; en lecture, tout compte de rôle connu (client compris).
+const REVOKED_EXPECTED: Record<"FLOOR_WRITE" | "READ", Record<ProfileName, boolean>> = {
+  FLOOR_WRITE: { anonyme: false, inconnu: false, banni: false, client: false, superviseur: true, admin: true },
+  READ: { anonyme: false, inconnu: false, banni: false, client: true, superviseur: true, admin: true },
+};
 
 describe("allowed — Étant donné un écran d'atelier (#4, #5)", () => {
   for (const policy of ["FLOOR_WRITE", "READ"] as const) {
@@ -52,7 +56,7 @@ describe("allowed — Étant donné un écran d'atelier (#4, #5)", () => {
         expect(allowed(policy, withScreen(name, VALID), enforce)).toBe(FLOOR_VALID[name]);
       });
       it.each(PROFILE_NAMES)(`Quand %s est sur un écran révoqué, alors ${policy} suit la matrice (drapeau ${enforce ? "posé" : "éteint"})`, (name) => {
-        expect(allowed(policy, withScreen(name, REVOKED), enforce)).toBe(FLOOR_REVOKED[name]);
+        expect(allowed(policy, withScreen(name, REVOKED), enforce)).toBe(REVOKED_EXPECTED[policy][name]);
       });
     }
   }
@@ -90,8 +94,9 @@ describe("refusal — Étant donné un refus", () => {
   it("Quand un écran révoqué est refusé sur l'atelier ou en lecture, alors KIOSK_REVOKED", () => {
     for (const policy of ["FLOOR_WRITE", "READ"] as const) {
       expect(refusal(policy, withScreen("anonyme", REVOKED))).toBe("KIOSK_REVOKED");
-      expect(refusal(policy, withScreen("client", REVOKED))).toBe("KIOSK_REVOKED");
+      expect(refusal(policy, withScreen("banni", REVOKED))).toBe("KIOSK_REVOKED");
     }
+    expect(refusal("FLOOR_WRITE", withScreen("client", REVOKED))).toBe("KIOSK_REVOKED");
   });
   it("Quand un écran révoqué est refusé sur une action du Bureau, alors le code habituel (session)", () => {
     expect(refusal("STAFF_WRITE", withScreen("anonyme", REVOKED))).toBe("AUTH_REQUIRED");

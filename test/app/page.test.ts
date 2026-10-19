@@ -125,7 +125,7 @@ describe("page d'accueil — Étant donné l'acteur résolu au rendu (#3)", () =
 // #5 : READ au chargement de la page, drapeau ACCESS_ENFORCE_FLOOR.
 describe("page d'accueil — Étant donné la garde de l'atelier (#5)", () => {
   type GateProps = { initial: Record<string, unknown>; user: unknown; live?: boolean; floorGuardOff?: boolean;
-    children: ReactElement<{ screen: unknown }> };
+    children: ReactElement<{ screen: unknown; signedIn?: boolean }> };
   const home = async () => (await Home()) as ReactElement<GateProps>;
 
   it("Quand le drapeau est posé et qu'un anonyme sans cookie ouvre la page, alors connexion + écran non enregistré, sans aucune lecture des données", async () => {
@@ -137,6 +137,7 @@ describe("page d'accueil — Étant donné la garde de l'atelier (#5)", () => {
     expect(el.props.user).toBeNull();
     expect(el.props.children.type).toBe(UnregisteredGate);
     expect(el.props.children.props.screen).toEqual({ status: "none" });
+    expect(el.props.children.props.signedIn).toBe(false);
     // Aucun instantané : rien du registre, ni opérateurs, ni gabarit maison.
     const initial = el.props.initial as typeof snapshot;
     expect([initial.units, initial.batches, initial.deliveries, initial.operations, initial.routes, initial.settings.ops])
@@ -166,10 +167,33 @@ describe("page d'accueil — Étant donné la garde de l'atelier (#5)", () => {
     expect(el.props.initial).toBe(snapshot);
   });
 
-  it("Quand un rôle inconnu ouvre la page, alors la porte, même drapeau éteint (B6)", async () => {
-    setSession(PROFILES.inconnu.session);
-    expect((await home()).props.children.type).toBe(UnregisteredGate);
+  it.each(["inconnu", "banni"] as const)("Quand un compte %s ouvre la page, alors la porte avec déconnexion, même drapeau éteint (B6)", async (p) => {
+    setSession(PROFILES[p].session);
+    const el = await home();
+    expect(el.props.children.type).toBe(UnregisteredGate);
+    expect(el.props.children.props.signedIn).toBe(true);
     expect(loadSnapshot).not.toHaveBeenCalled();
+  });
+
+  it.each(["superviseur", "admin"] as const)("Quand un %s est connecté sur un écran révoqué (drapeau posé), alors l'application, données chargées, état « révoqué » (NB-a)", async (p) => {
+    vi.stubEnv("ACCESS_ENFORCE_FLOOR", "true");
+    setSession(PROFILES[p].session);
+    (await cookies()).set(kioskCookieName(), "j");
+    db.kiosk.findUnique.mockResolvedValue({ id: "k1", label: "É", revokedAt: new Date(), lastSeenAt: null });
+    const el = await home();
+    expect(el.props.children.type).toBe(AppRoot);
+    expect(el.props.children.props.screen).toEqual({ status: "revoked" });
+    expect(el.props.initial).toBe(snapshot);
+  });
+
+  it("Quand un client est connecté sur un écran révoqué, alors il lit au titre de son compte (règle de l'ADR)", async () => {
+    vi.stubEnv("ACCESS_ENFORCE_FLOOR", "true");
+    setSession(PROFILES.client.session);
+    (await cookies()).set(kioskCookieName(), "j");
+    db.kiosk.findUnique.mockResolvedValue({ id: "k1", label: "É", revokedAt: new Date(), lastSeenAt: null });
+    const el = await home();
+    expect(el.props.children.type).toBe(AppRoot);
+    expect((el.props.initial as typeof snapshot).settings.ops).toEqual([]);
   });
 
   it("Quand le drapeau est posé et qu'un écran appairé ouvre la page, alors l'atelier complet", async () => {

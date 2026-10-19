@@ -9,6 +9,7 @@ vi.mock("@/app/actions", () => ({
   listKiosksAction: vi.fn(),
 }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh }) }));
+vi.mock("@/lib/auth-client", () => ({ signOut: vi.fn(async () => ({})) }));
 vi.mock("./app-context", () => ({ useApp: vi.fn() }));
 vi.mock("./login-gate", () => ({ LoginGate: () => <div>vue-connexion</div> }));
 
@@ -18,6 +19,7 @@ const nb = (s: string) => s.replace(/\u00a0/g, " ");
 
 import { pairKioskAction, revokeKioskAction, renameKioskAction, listKiosksAction } from "@/app/actions";
 import { useApp } from "./app-context";
+import { signOut } from "@/lib/auth-client";
 import { ThisScreen, KioskList, FloorGuardBanner, UnregisteredGate } from "./kiosk-panel";
 import { I } from "@/lib/i18n";
 
@@ -204,5 +206,20 @@ describe("garde de l'atelier (#5)", () => {
     render(<UnregisteredGate screen={{ status: "revoked" }} />);
     expect(screen.getByText(I.fr.errors.KIOSK_REVOKED)).toBeTruthy();
     expect(screen.getByText("vue-connexion")).toBeTruthy();
+  });
+});
+
+describe("porte — compte connecté mais refusé (#5)", () => {
+  it.each(["fr", "en"] as const)("Quand un compte est connecté mais refusé (%s), alors « Se déconnecter » déconnecte et recharge", async (lang) => {
+    vi.mocked(useApp).mockReturnValue(ctx(null, lang));
+    render(<UnregisteredGate screen={{ status: "none" }} signedIn />);
+    fireEvent.click(screen.getByText(I[lang].gateSignOut));
+    await waitFor(() => expect(refresh).toHaveBeenCalled());
+    expect(signOut).toHaveBeenCalled();
+  });
+  it("Quand personne n'est connecté, alors pas de bouton de déconnexion", () => {
+    vi.mocked(useApp).mockReturnValue(ctx(null));
+    render(<UnregisteredGate screen={{ status: "none" }} signedIn={false} />);
+    expect(screen.queryByText(I.fr.gateSignOut)).toBeNull();
   });
 });

@@ -52,7 +52,7 @@ describe("synchro live — Étant donné un refus d'accès du serveur (#5)", () 
     render(<LangProvider><AppProvider initial={initial} user={null} {...props}><span /></AppProvider></LangProvider>);
   const online = async () => { await act(async () => { window.dispatchEvent(new Event("online")); await Promise.resolve(); }); };
 
-  it.each(["AUTH_REQUIRED", "KIOSK_REVOKED"])("Quand le rechargement rend %s, alors la synchro s'arrête et la page se recharge une fois", async (code) => {
+  it.each(["AUTH_REQUIRED", "KIOSK_REVOKED", "FORBIDDEN"])("Quand le rechargement rend %s, alors la synchro s'arrête et la page se recharge une fois", async (code) => {
     live.mockResolvedValue({ ok: false, error: code });
     mount();
     await online();
@@ -63,7 +63,7 @@ describe("synchro live — Étant donné un refus d'accès du serveur (#5)", () 
     expect(refresh).toHaveBeenCalledTimes(1);
   });
 
-  it("Quand le rechargement rend une autre erreur (FORBIDDEN, GENERIC), alors la synchro continue sans recharger", async () => {
+  it("Quand le rechargement rend une erreur technique (GENERIC), alors la synchro continue sans recharger", async () => {
     live.mockResolvedValue({ ok: false, error: "GENERIC" });
     mount();
     await online();

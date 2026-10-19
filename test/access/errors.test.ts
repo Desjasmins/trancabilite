@@ -72,6 +72,10 @@ describe("textes de la garde de l'atelier (#5)", () => {
     expect(I.fr.errors.AUTH_REQUIRED).toBe("Connectez-vous ou utilisez un écran enregistré.");
     expect(I.en.errors.AUTH_REQUIRED).toBe("Sign in or use a registered screen.");
   });
+  it("Quand on lit gateSignOut, alors « Se déconnecter » / « Sign out »", () => {
+    expect(I.fr.gateSignOut).toBe("Se déconnecter");
+    expect(I.en.gateSignOut).toBe("Sign out");
+  });
   it("Quand on lit floorGuardOff, alors le texte de l'inventaire, insécable avant « : » en fr", () => {
     expect(I.fr.floorGuardOff).toBe("Garde de l'atelier inactive : l'atelier accepte encore les appels sans écran enregistré.");
     expect(I.en.floorGuardOff).toBe("Shop-floor guard inactive: the shop floor still accepts calls from unregistered screens.");
