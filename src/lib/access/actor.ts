@@ -48,8 +48,10 @@ const resolve = cache(async (mode: ActorMode): Promise<Actor> => {
   const kiosk = await readKiosk(await cookies(), mode);
   const u = session?.user as SessionUser | undefined;
   // Better Auth 1.6 ne filtre pas les bannis dans getSession : on le fait ici.
-  if (!u || u.banned === true) return { user: null, ...kiosk };
-  return { user: { id: u.id, name: u.name, email: u.email, role: toRole(u.role) }, ...kiosk };
+  if (!u) return { user: null, banned: false, ...kiosk };
+  // Banni : aucun droit, mais une session existe — il n'est pas l'acteur nul (#5).
+  if (u.banned === true) return { user: null, banned: true, ...kiosk };
+  return { user: { id: u.id, name: u.name, email: u.email, role: toRole(u.role) }, banned: false, ...kiosk };
 });
 
 /** Acteur de la requête courante, résolu côté serveur. */

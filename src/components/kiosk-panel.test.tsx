@@ -179,7 +179,8 @@ describe("garde de l'atelier (#5)", () => {
   it.each(["fr", "en"] as const)("Quand le bandeau s'affiche (%s), alors le texte floorGuardOff", (lang) => {
     vi.mocked(useApp).mockReturnValue(ctx("admin", lang));
     render(<FloorGuardBanner />);
-    expect(screen.getByRole("status").textContent).toBe(nb(I[lang].floorGuardOff));
+    // textContent garde l'insécable : comparaison au texte brut.
+    expect(screen.getByRole("status").textContent).toBe(I[lang].floorGuardOff);
   });
 
   it.each([[true, true], [false, false]])("Quand floorGuardOff vaut %s, alors bandeau dans l'onglet Écrans : %s", async (off, visible) => {

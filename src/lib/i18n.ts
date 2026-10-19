@@ -77,6 +77,8 @@ export const I = {
     dragHint: "Touchez un élément ci-dessous (ou sur l'aperçu) pour le modifier.",
     // #4 — écrans d'atelier (lexique : « écran » = appareil enregistré ; « poste » = lieu de travail).
     tabThisScreen: "Cet écran", tabStations: "Écrans d'atelier",
+    // #5 — bandeau Admin tant que la garde de l'atelier est inactive.
+    floorGuardOff: "Garde de l'atelier inactive\u00a0: l'atelier accepte encore les appels sans écran enregistré.",
     stationUnpairedTitle: "Écran non enregistré",
     stationUnpairedBody: "Cet écran n'est pas encore autorisé pour l'atelier. Un admin doit l'enregistrer une fois.",
     stationUnpairedLogin: "Connexion admin",
@@ -94,7 +96,7 @@ export const I = {
     stationPairYes: "Confirmer l'enregistrement",
     // #3 — refus des Server Actions (codes traduits par run()) et encart « base non connectée ».
     errors: {
-      AUTH_REQUIRED: "Session expirée. Reconnectez-vous puis réessayez.",
+      AUTH_REQUIRED: "Connectez-vous ou utilisez un écran enregistré.",
       FORBIDDEN: "Votre compte ne permet pas cette action.",
       KIOSK_REVOKED: "L'accès de cet écran a été retiré. Un admin doit l'enregistrer à nouveau.",
       KIOSK_NOT_FOUND: "Écran introuvable. Rechargez la liste des écrans.",
@@ -184,6 +186,7 @@ export const I = {
     famGlobal: "Global", famSans: "Sans (Arial)", famMono: "Mono (Courier)", famSerif: "Serif (Georgia)",
     dragHint: "Tap an element below (or on the preview) to edit it.",
     tabThisScreen: "This screen", tabStations: "Shop-floor screens",
+    floorGuardOff: "Shop-floor guard inactive: the shop floor still accepts calls from unregistered screens.",
     stationUnpairedTitle: "Screen not registered",
     stationUnpairedBody: "This screen isn't authorized for the shop floor yet. An admin needs to register it once.",
     stationUnpairedLogin: "Admin sign-in",
@@ -200,7 +203,7 @@ export const I = {
     stationPairConfirm: "This device will become a shop-floor screen for 400 days. Register only a factory screen.",
     stationPairYes: "Confirm registration",
     errors: {
-      AUTH_REQUIRED: "Session expired. Sign in again, then try again.",
+      AUTH_REQUIRED: "Sign in or use a registered screen.",
       FORBIDDEN: "Your account can't perform this action.",
       KIOSK_REVOKED: "This screen's access was revoked. An admin needs to register it again.",
       KIOSK_NOT_FOUND: "Screen not found. Reload the list of screens.",

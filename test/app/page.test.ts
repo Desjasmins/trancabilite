@@ -112,10 +112,12 @@ describe("page d'accueil — Étant donné l'acteur résolu au rendu (#3)", () =
       const revoked = await keyNow();
       expect(new Set([none, paired, revoked]).size).toBe(3);
     });
-    it("Quand l'écran est révoqué, alors « revoked »", async () => {
+    it("Quand l'écran est révoqué, alors « revoked » — passé à la porte depuis le #5 (READ refuse l'écran révoqué)", async () => {
       (await cookies()).set(kioskCookieName(), "j");
       db.kiosk.findUnique.mockResolvedValue({ id: "k1", label: "É", revokedAt: new Date(), lastSeenAt: null });
-      expect(await screenOf()).toEqual({ status: "revoked" });
+      const el = (await Home()) as ReactElement<{ children: ReactElement<{ screen: unknown }> }>;
+      expect(el.props.children.type).toBe(UnregisteredGate);
+      expect(el.props.children.props.screen).toEqual({ status: "revoked" });
     });
   });
 });

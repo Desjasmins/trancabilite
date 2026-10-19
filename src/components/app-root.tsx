@@ -6,7 +6,7 @@ import { useApp } from "./app-context";
 import { Atelier } from "./atelier";
 import { Bureau } from "./bureau";
 import { LoginGate } from "./login-gate";
-import { ThisScreen } from "./kiosk-panel";
+import { ThisScreen, FloorGuardBanner } from "./kiosk-panel";
 import { signOut } from "@/lib/auth-client";
 import { queueFor } from "@/lib/status";
 import { tryReconnectUSB } from "@/lib/usb";
@@ -22,7 +22,7 @@ const STATION_ORDER: StationKey[] = [
 ];
 
 export function AppRoot({ screen }: { screen: ScreenState }) {
-  const { units, template, ui, setUi, t, lang, setLang, user } = useApp();
+  const { units, template, ui, setUi, t, lang, setLang, user, floorGuardOff } = useApp();
   const router = useRouter();
 
   const role = user?.role ?? null;
@@ -124,6 +124,10 @@ export function AppRoot({ screen }: { screen: ScreenState }) {
           onChange={(v) => setLang(v as "fr" | "en")}
         />
       </header>
+      {/* Garde de l'atelier inactive (#5) : en-tête du Bureau, admin (calculé au serveur). */}
+      {ui.mode === "bureau" && floorGuardOff && (
+        <div className="px-[18px] pt-3"><FloorGuardBanner /></div>
+      )}
 
       {/* ---- Nav ---- */}
       <nav className="sticky top-[53px] z-20 flex gap-1 overflow-x-auto border-b border-line bg-[#16181a] px-[14px]">
