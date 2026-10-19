@@ -48,6 +48,10 @@ describe("ThisScreen — onglet « Cet écran » (#4)", () => {
     expect(screen.getByText(I.fr.stationPairWarn)).toBeTruthy();
     fireEvent.change(screen.getByLabelText(I.fr.stationLabel), { target: { value: "Établi 2" } });
     fireEvent.click(screen.getByText(I.fr.stationPairBtn));
+    // Confirmation d'abord (tour 2) : rien n'est appelé avant.
+    expect(pairKioskAction).not.toHaveBeenCalled();
+    expect(screen.getByText(I.fr.stationPairConfirm)).toBeTruthy();
+    fireEvent.click(screen.getByText(I.fr.stationPairYes));
     await waitFor(() => expect(refresh).toHaveBeenCalled());
     expect(pairKioskAction).toHaveBeenCalledWith({ label: "Établi 2" });
     expect(run).toHaveBeenCalledWith(expect.any(Promise), I.fr.stationPaired);
@@ -59,6 +63,7 @@ describe("ThisScreen — onglet « Cet écran » (#4)", () => {
     render(<ThisScreen screen={{ status: "none" }} />);
     fireEvent.change(screen.getByLabelText(I.fr.stationLabel), { target: { value: "X" } });
     fireEvent.click(screen.getByText(I.fr.stationPairBtn));
+    fireEvent.click(screen.getByText(I.fr.stationPairYes));
     await waitFor(() => expect(run).toHaveBeenCalled());
     expect(refresh).not.toHaveBeenCalled();
   });
@@ -83,6 +88,25 @@ describe("ThisScreen — onglet « Cet écran » (#4)", () => {
     vi.mocked(useApp).mockReturnValue(ctx("admin", "en"));
     render(<ThisScreen screen={{ status: "none" }} />);
     expect(screen.getByText("Register this screen")).toBeTruthy();
+  });
+});
+
+describe("ThisScreen — confirmation de l'appairage (tour 2)", () => {
+  it("Quand l'admin annule la confirmation, alors rien n'est enregistré", async () => {
+    vi.mocked(useApp).mockReturnValue(ctx("admin"));
+    render(<ThisScreen screen={{ status: "none" }} />);
+    fireEvent.change(screen.getByLabelText(I.fr.stationLabel), { target: { value: "X" } });
+    fireEvent.click(screen.getByText(I.fr.stationPairBtn));
+    fireEvent.click(screen.getByText(I.fr.cancel));
+    await waitFor(() => expect(screen.queryByText(I.fr.stationPairYes)).toBeNull());
+    expect(pairKioskAction).not.toHaveBeenCalled();
+  });
+  it("Quand la langue est l'anglais, alors la confirmation est en anglais", () => {
+    vi.mocked(useApp).mockReturnValue(ctx("admin", "en"));
+    render(<ThisScreen screen={{ status: "none" }} />);
+    fireEvent.change(screen.getByLabelText(I.en.stationLabel), { target: { value: "X" } });
+    fireEvent.click(screen.getByText(I.en.stationPairBtn));
+    expect(screen.getByText(I.en.stationPairConfirm)).toBeTruthy();
   });
 });
 

@@ -98,6 +98,16 @@ describe("page d'accueil — Étant donné l'acteur résolu au rendu (#3)", () =
       expect(await screenOf()).toEqual({ status: "paired", label: "Établi 2" });
       expect(db.kiosk.update).not.toHaveBeenCalled();
     });
+    it("Quand l'état de l'écran change (aucun → appairé → révoqué), alors AppProvider change de key (tour 2)", async () => {
+      const keyNow = async () => ((await Home()) as ReactElement).key;
+      const none = await keyNow();
+      (await cookies()).set(kioskCookieName(), "j");
+      db.kiosk.findUnique.mockResolvedValue({ id: "k1", label: "É", revokedAt: null, lastSeenAt: new Date() });
+      const paired = await keyNow();
+      db.kiosk.findUnique.mockResolvedValue({ id: "k1", label: "É", revokedAt: new Date(), lastSeenAt: null });
+      const revoked = await keyNow();
+      expect(new Set([none, paired, revoked]).size).toBe(3);
+    });
     it("Quand l'écran est révoqué, alors « revoked »", async () => {
       (await cookies()).set(kioskCookieName(), "j");
       db.kiosk.findUnique.mockResolvedValue({ id: "k1", label: "É", revokedAt: new Date(), lastSeenAt: null });

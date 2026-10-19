@@ -15,7 +15,7 @@ import { cookies, resetHeadersMock } from "../mocks/headers";
 import { kioskCookieName } from "@/lib/access/kiosk";
 import {
   confirmMontageAction, confirmMontageBulkAction, retestUnitAction,
-  confirmTestAction, confirmVerifAction, packUnitAction,
+  confirmTestAction, confirmVerifAction, packUnitAction, retestUnitOfficeAction,
 } from "@/app/actions";
 
 const db = prisma as unknown as PrismaMock;
@@ -288,5 +288,35 @@ describe("stationId — Étant donné un écran d'atelier appairé (#4)", () => 
     db.unit.findUnique.mockResolvedValue(ok("montage"));
     expect((await confirmMontageAction({ unitId: "U1", operator: "Ana" })).ok).toBe(true);
     expect(db.traceEvent.create.mock.calls[0][0].data.stationId).toBeNull();
+  });
+});
+
+// B1 (QA #4) : l'écran inscrit au registre vient du cookie, jamais de l'entrée du navigateur.
+describe("stationId falsifié dans l'entrée — Étant donné un client qui envoie stationId: \"forge\"", () => {
+  const forge = { stationId: "forge" };
+  const blocked = { id: "U1", blocked: true, currentOperationKey: "test", version: 5 };
+  const CASES: Array<[string, () => Promise<{ ok: boolean }>, Record<string, unknown>, () => void]> = [
+    ["confirmMontageAction", () => confirmMontageAction({ unitId: "U1", operator: "Ana", ...forge }), unitRow(), () => {}],
+    ["confirmMontageBulkAction", () => confirmMontageBulkAction({ unitIds: ["U1"], operator: "Ana", ...forge }), unitRow(), () => {}],
+    ["confirmTestAction", () => confirmTestAction({ unitId: "U1", operator: "Ana", diel: "accept", pol: "accept", eff: "accept", nc: "", ...forge }), unitRow({ currentOperationKey: "test" }), () => {}],
+    ["confirmVerifAction", () => confirmVerifAction({ unitId: "U1", operator: "Ana", ...forge }), unitRow({ currentOperationKey: "verification" }), () => {}],
+    ["retestUnitAction", () => retestUnitAction({ unitId: "U1", operator: "Ana", note: "r", ...forge }), blocked, () => {}],
+    ["retestUnitOfficeAction", () => retestUnitOfficeAction({ unitId: "U1", note: "r", ...forge }), blocked, () => setSession(PROFILES.superviseur.session)],
+  ];
+
+  it.each(CASES)("Quand %s est appelée sans écran, alors l'événement porte stationId null", async (_n, call, row, login) => {
+    login();
+    db.unit.findUnique.mockResolvedValue(row);
+    expect((await call()).ok).toBe(true);
+    expect(db.traceEvent.create.mock.calls[0][0].data.stationId).toBeNull();
+  });
+
+  it.each(CASES)("Quand %s est appelée depuis un écran appairé, alors l'événement porte l'id du Kiosk", async (_n, call, row, login) => {
+    login();
+    (await cookies()).set(kioskCookieName(), "jeton-k7");
+    db.kiosk.findUnique.mockResolvedValue({ id: "k7", label: "Établi 7", revokedAt: null, lastSeenAt: new Date() });
+    db.unit.findUnique.mockResolvedValue(row);
+    expect((await call()).ok).toBe(true);
+    expect(db.traceEvent.create.mock.calls[0][0].data.stationId).toBe("k7");
   });
 });

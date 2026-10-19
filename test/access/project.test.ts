@@ -43,4 +43,16 @@ describe("projectSnapshot — Étant donné un instantané complet", () => {
     const actor = { ...PROFILES.client.actor, kioskRevoked: true };
     expect(projectSnapshot(snapshot, actor).settings.ops).toEqual([]);
   });
+
+  it("Quand un client sans écran reçoit des unités, alors les libellés d'écran sont retirés (ecran: null)", () => {
+    const step = (ecran: string | null) => ({ par: "Ana", date: null, ecran });
+    const unit = { id: "U1", montage: step("Établi 2"), test: { ...step("Établi 3"), diel: null }, verification: step(null) };
+    const out = projectSnapshot({ units: [unit] }, PROFILES.client.actor);
+    expect(out.units[0].montage).toEqual({ par: "Ana", date: null, ecran: null });
+    expect(out.units[0].test).toEqual({ par: "Ana", date: null, ecran: null, diel: null });
+    expect(out.units[0].verification.ecran).toBeNull();
+    expect(unit.montage.ecran).toBe("Établi 2"); // pas de mutation
+    // Écran appairé ou staff : libellés gardés.
+    expect(projectSnapshot({ units: [unit] }, PROFILES.superviseur.actor).units[0].montage.ecran).toBe("Établi 2");
+  });
 });

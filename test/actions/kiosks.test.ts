@@ -157,8 +157,8 @@ describe("renameKioskAction et listKiosksAction", () => {
     expect(table[0].label).toBe("Établi 3");
   });
 
-  it("Quand l'écran n'existe pas, alors « Écran introuvable »", async () => {
-    expect(await renameKioskAction({ id: "nope", label: "X" })).toEqual({ ok: false, error: "Écran introuvable" });
+  it("Quand l'écran n'existe pas, alors le code traduit KIOSK_NOT_FOUND", async () => {
+    expect(await renameKioskAction({ id: "nope", label: "X" })).toEqual({ ok: false, error: "KIOSK_NOT_FOUND" });
   });
 
   it("Quand le nouveau nom est vide, alors message Zod", async () => {
@@ -175,5 +175,38 @@ describe("renameKioskAction et listKiosksAction", () => {
   it("Quand un superviseur liste, alors FORBIDDEN", async () => {
     setSession(PROFILES.superviseur.session);
     expect(await listKiosksAction()).toEqual({ ok: false, error: "FORBIDDEN" });
+  });
+});
+
+describe("libellé unique parmi les écrans actifs (#4, tour 2)", () => {
+  it("Quand on appaire un 2e écran actif sous le même nom (espaces compris), alors KIOSK_LABEL_TAKEN et rien n'est écrit", async () => {
+    await pairKioskAction({ label: "Établi 2" });
+    resetHeadersMock(); // autre navigateur
+    const res = await pairKioskAction({ label: " Établi 2 " });
+    expect(res).toEqual({ ok: false, error: "KIOSK_LABEL_TAKEN" });
+    expect(table).toHaveLength(1);
+    expect(await cookieValue()).toBeUndefined();
+  });
+
+  it("Quand l'écran du même nom est révoqué, alors le nom est libre", async () => {
+    await pairKioskAction({ label: "Établi 2" });
+    await revokeKioskAction({ id: "k1" });
+    resetHeadersMock();
+    expect((await pairKioskAction({ label: "Établi 2" })).ok).toBe(true);
+  });
+
+  it("Quand on ré-appaire le même navigateur sous son propre nom, alors c'est permis (l'ancien est révoqué)", async () => {
+    await pairKioskAction({ label: "Établi 2" });
+    expect((await pairKioskAction({ label: "Établi 2" })).ok).toBe(true);
+    expect(table.filter((r) => r.revokedAt === null)).toHaveLength(1);
+  });
+
+  it("Quand on renomme vers le nom d'un autre écran actif, alors KIOSK_LABEL_TAKEN ; vers son propre nom, permis", async () => {
+    await pairKioskAction({ label: "A" });
+    resetHeadersMock();
+    await pairKioskAction({ label: "B" });
+    expect(await renameKioskAction({ id: "k2", label: "A" })).toEqual({ ok: false, error: "KIOSK_LABEL_TAKEN" });
+    expect(table[1].label).toBe("B");
+    expect((await renameKioskAction({ id: "k2", label: "B" })).ok).toBe(true);
   });
 });

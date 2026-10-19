@@ -6,7 +6,8 @@ import { PROFILES, PROFILE_NAMES, type ProfileName } from "./profiles";
 const EXPECTED: Record<Policy, Record<ProfileName, boolean>> = {
   ADMIN_WRITE: { anonyme: false, inconnu: false, banni: false, client: false, superviseur: false, admin: true },
   STAFF_WRITE: { anonyme: false, inconnu: false, banni: false, client: false, superviseur: true, admin: true },
-  // Temporaire : les actions d'atelier restent ouvertes jusqu'au modèle Kiosk (#4).
+  // Temporaire : les actions d'atelier restent ouvertes jusqu'au #5, qui exigera l'écran ;
+  // dès le #4, seul l'écran révoqué est refusé (matrice « écran » plus bas).
   OPEN_UNTIL_KIOSK: { anonyme: true, inconnu: true, banni: true, client: true, superviseur: true, admin: true },
 };
 
