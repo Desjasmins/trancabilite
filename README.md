@@ -92,13 +92,24 @@ Les comptes du Bureau sont des comptes Better Auth à trois rôles. Sans inscrip
 
 Un rôle hors de ces trois valeurs, ou un compte banni, n'a aucun droit au Bureau.
 
-**L'atelier reste ouvert** : ses actions (créer un lot, valider un poste, emballer, livraisons, synchro) ne demandent aucune connexion. Elles sont marquées `OPEN_UNTIL_KIOSK` jusqu'à ce que le ticket #5 exige un écran enregistré.
+**Atelier (#5)** : ses écritures (créer un lot, valider un poste, remise en essai, emballer, livraisons, impression) demandent un **écran enregistré** ou un admin/superviseur connecté (`FLOOR_WRITE`) ; la lecture (page, synchro) demande un écran enregistré ou un compte de rôle connu (`READ`). Un client connecté sur un écran enregistré a les droits de l'écran, ni plus ni moins. Un compte banni ou de rôle inconnu n'a aucun droit. Un écran retiré est refusé, sauf admin ou superviseur connecté.
+
+### Drapeau `ACCESS_ENFORCE_FLOOR` (#5, temporaire, échéance 2026-11-30)
+
+Variable **serveur** (jamais `NEXT_PUBLIC_*`), lue à chaque requête ; seule la valeur exacte `true` active la garde.
+
+- **Absente ou autre valeur (éteint)** : seul l'appel sans session ni cookie d'écran passe encore, comme avant le #5. Un client, un banni ou un rôle inconnu sans écran est refusé ; un écran retiré aussi. L'admin voit le bandeau « Garde de l'atelier inactive » (onglet « Écrans d'atelier » et en-tête du Bureau) ; le serveur journalise un avertissement une fois par démarrage.
+- **`true` (posé)** : sans écran ni compte, la page affiche « Écran non enregistré » et la connexion, sans aucune donnée ; un écran déjà ouvert arrête sa synchro et se recharge.
+
+**Procédure d'activation** (geste de Gedeon) : 1) déployer le #4 ; 2) enregistrer **chaque** écran de l'usine ; 3) poser `ACCESS_ENFORCE_FLOOR=true` dans Vercel (Production) ; 4) redéployer (Vercel n'applique une variable qu'aux nouveaux déploiements). Le ticket #5 n'est fermé qu'après la pose confirmée en production.
+
+**Retour arrière** : retirer la variable dans Vercel et redéployer. Aucune donnée n'est touchée.
 
 ### Écrans d'atelier (#4)
 
-Un admin connecté **sur l'écran lui-même** l'enregistre depuis l'onglet Atelier « Cet écran ». Le navigateur reçoit un cookie (`__Host-lb_kiosk` en production, `lb_kiosk_dev` en dev, 400 jours, httpOnly) ; la base (`kiosks`) n'en garde que l'empreinte SHA-256. Chaque événement validé depuis cet écran porte son id (`trace_events.stationId`) ; la fiche d'une unité affiche le nom de l'écran, ou « Écran non identifié » (historique, écran non enregistré). Un écran n'est jamais supprimé : l'admin lui **retire l'accès** (onglet Bureau « Écrans d'atelier »), et ses appels d'atelier sont alors refusés (sauf si un admin ou un superviseur est connecté). Un écran non enregistré travaille encore comme avant. Deux écrans actifs ne peuvent pas porter le même nom. **Renommer un écran change son nom affiché dans tout l'historique** : le journal ne garde que son identifiant, et la fiche d'une unité montre toujours le nom courant. Un client connecté sans écran ne voit pas le nom des écrans.
+Un admin connecté **sur l'écran lui-même** l'enregistre depuis l'onglet Atelier « Cet écran ». Le navigateur reçoit un cookie (`__Host-lb_kiosk` en production, `lb_kiosk_dev` en dev, 400 jours, httpOnly) ; la base (`kiosks`) n'en garde que l'empreinte SHA-256. Chaque événement validé depuis cet écran porte son id (`trace_events.stationId`) ; la fiche d'une unité affiche le nom de l'écran, ou « Écran non identifié » (historique, écran non enregistré). Un écran n'est jamais supprimé : l'admin lui **retire l'accès** (onglet Bureau « Écrans d'atelier »), et ses appels d'atelier sont alors refusés (sauf si un admin ou un superviseur est connecté). Un écran non enregistré ne travaille plus une fois le drapeau `ACCESS_ENFORCE_FLOOR` posé (voir plus haut). Deux écrans actifs ne peuvent pas porter le même nom. **Renommer un écran change son nom affiché dans tout l'historique** : le journal ne garde que son identifiant, et la fiche d'une unité montre toujours le nom courant. Un client connecté sans écran ne voit pas le nom des écrans.
 
-**Déploiement du #4** : 1) appliquer le schéma (nouvelle table `kiosks`, index sur `trace_events.stationId` — ajout pur) ; 2) déployer le code ; 3) enregistrer chaque écran de l'usine. Ne pas encore poser `ACCESS_ENFORCE_FLOOR` (ticket #5).
+**Déploiement du #4** : 1) appliquer le schéma (nouvelle table `kiosks`, index sur `trace_events.stationId` — ajout pur) ; 2) déployer le code ; 3) enregistrer chaque écran de l'usine. Puis activer la garde (procédure du drapeau, #5).
 
 ## Modèle de données (`prisma/schema.prisma`)
 
