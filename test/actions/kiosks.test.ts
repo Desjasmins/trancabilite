@@ -213,4 +213,11 @@ describe("libellé unique parmi les écrans actifs (#4, tour 2)", () => {
     expect(table[1].label).toBe("B");
     expect((await renameKioskAction({ id: "k2", label: "B" })).ok).toBe(true);
   });
+
+  it("Quand la base échoue pendant le renommage, alors GENERIC (le détail reste au journal serveur)", async () => {
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    db.$transaction.mockImplementationOnce(async () => { throw new Error("base"); });
+    expect(await renameKioskAction({ id: "k1", label: "X" })).toEqual({ ok: false, error: "GENERIC" });
+    err.mockRestore();
+  });
 });
