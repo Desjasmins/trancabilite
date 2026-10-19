@@ -162,7 +162,6 @@ export function AppProvider({
     let debounce: ReturnType<typeof setTimeout> | null = null;
     let stopped = false;
     const refresh = () => {
-      if (stopped) return;
       void getLiveDataAction().then((res) => {
         if (res.ok) applyResult(res);
         // #5 : l'accès est retiré (session, écran révoqué) → plus de sondage ; le rendu serveur

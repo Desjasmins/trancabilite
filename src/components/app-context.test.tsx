@@ -72,6 +72,30 @@ describe("synchro live — Étant donné un refus d'accès du serveur (#5)", () 
     expect(refresh).not.toHaveBeenCalled();
   });
 
+  it("Quand deux rechargements en vol rendent AUTH_REQUIRED, alors un seul rechargement de page", async () => {
+    let release: (v: ActionResult) => void = () => {};
+    live.mockImplementation(() => new Promise<ActionResult>((r) => { release = r; }));
+    const releases: Array<(v: ActionResult) => void> = [];
+    mount();
+    await online(); releases.push(release);
+    await online(); releases.push(release);
+    await act(async () => { for (const r of releases) r({ ok: false, error: "AUTH_REQUIRED" }); await Promise.resolve(); });
+    expect(live).toHaveBeenCalledTimes(2);
+    expect(refresh).toHaveBeenCalledTimes(1);
+  });
+
+  it("Quand le rechargement réussit, alors les données sont appliquées et la synchro continue", async () => {
+    live.mockResolvedValue({ ok: true, units: [{ id: "U9" }] } as unknown as ActionResult);
+    const seen: number[] = [];
+    function Probe() { seen.push(useApp().units.length); return null; }
+    render(<LangProvider><AppProvider initial={initial} user={null}><Probe /></AppProvider></LangProvider>);
+    await online();
+    expect(seen.at(-1)).toBe(1);
+    await online();
+    expect(live).toHaveBeenCalledTimes(2);
+    expect(refresh).not.toHaveBeenCalled();
+  });
+
   it("Quand live vaut false (porte sans identité), alors aucune synchro", async () => {
     mount({ live: false });
     await online();
