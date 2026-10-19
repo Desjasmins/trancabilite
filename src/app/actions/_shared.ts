@@ -38,9 +38,18 @@ export function failInvalid(error: ZodError): ActionResult {
   return fail(error.issues[0].message);
 }
 
-/** Message d'une exception levée par une transaction : message métier, sinon code GENERIC. */
+/** Refus métier levé par NOTRE code : son message peut être montré à l'utilisateur. */
+export class BusinessError extends Error {}
+
+/**
+ * Message d'une exception levée pendant une action. Seul un refus métier (BusinessError)
+ * passe ; toute autre erreur (Prisma, réseau…) peut divulguer des détails internes :
+ * journal serveur seulement, code GENERIC au client (revue #3).
+ */
 export function errorText(e: unknown): string {
-  return e instanceof Error ? e.message : "GENERIC";
+  if (e instanceof BusinessError) return e.message;
+  console.error("[action]", e);
+  return "GENERIC";
 }
 
 /**
@@ -62,10 +71,10 @@ export async function recordOperation(
       where: { id: unitId },
       include: { batch: { include: { route: { include: { steps: true } } } } },
     });
-    if (!unit) throw new Error("Unité introuvable");
-    if (unit.blocked) throw new Error("Unité bloquée (non conforme)");
+    if (!unit) throw new BusinessError("Unité introuvable");
+    if (unit.blocked) throw new BusinessError("Unité bloquée (non conforme)");
     if (unit.currentOperationKey !== operationKey)
-      throw new Error("Cette unité n'est pas à cette étape");
+      throw new BusinessError("Cette unité n'est pas à cette étape");
 
     const steps =
       unit.batch?.route?.steps
@@ -96,7 +105,7 @@ export async function recordOperation(
         version: { increment: 1 },
       },
     });
-    if (upd.count === 0) throw new Error("Conflit de concurrence, réessayez");
+    if (upd.count === 0) throw new BusinessError("Conflit de concurrence, réessayez");
   });
 }
 
@@ -108,9 +117,9 @@ export async function recordOperation(
 export async function reworkUnit(unitId: string, operator: string, note: string): Promise<void> {
   await prisma.$transaction(async (tx) => {
     const unit = await tx.unit.findUnique({ where: { id: unitId } });
-    if (!unit) throw new Error("Unité introuvable");
-    if (!unit.blocked) throw new Error("Cette unité n'est pas bloquée");
-    if (!unit.currentOperationKey) throw new Error("Unité sans étape courante");
+    if (!unit) throw new BusinessError("Unité introuvable");
+    if (!unit.blocked) throw new BusinessError("Cette unité n'est pas bloquée");
+    if (!unit.currentOperationKey) throw new BusinessError("Unité sans étape courante");
 
     await tx.traceEvent.create({
       data: { unitId, operationKey: unit.currentOperationKey, result: EventResult.rework, operator, note: note || null },
@@ -120,6 +129,6 @@ export async function reworkUnit(unitId: string, operator: string, note: string)
       where: { id: unitId, version: unit.version },
       data: { blocked: false, nc: null, version: { increment: 1 } },
     });
-    if (upd.count === 0) throw new Error("Conflit de concurrence, réessayez");
+    if (upd.count === 0) throw new BusinessError("Conflit de concurrence, réessayez");
   });
 }

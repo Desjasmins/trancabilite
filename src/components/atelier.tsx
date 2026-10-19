@@ -1,5 +1,6 @@
 "use client";
 
+import { reportFailure } from "@/lib/access/errors";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { useApp } from "./app-context";
@@ -572,7 +573,7 @@ function EtiquettesStation() {
       const out = await printLabels(fresh, template, t);
       if (out.ok) {
         toast.success(out.message);
-        void markPrintedAction({ unitIds: res.createdIds }).then((r) => r.units);
+        void reportFailure(markPrintedAction({ unitIds: res.createdIds }), t, (m) => toast.error(m));
       } else toast.error(out.message);
     }
   };
@@ -606,7 +607,7 @@ function EtiquettesStation() {
             <input ref={qtyRef} type="number" min={1} defaultValue={3} className={inputCls + " w-[90px]"} />
           </Field>
           <Field label={t.startSerial}>
-            <input ref={startRef} type="number" placeholder="auto" className={inputCls + " w-[110px]"} />
+            <input ref={startRef} type="number" placeholder={t.startSerialAuto} className={inputCls + " w-[110px]"} />
           </Field>
           <Field label={t.sub} grow>
             <input ref={subRef} defaultValue={settings.sub} className={inputCls + " w-full"} />

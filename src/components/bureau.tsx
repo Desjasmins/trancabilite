@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/sheet";
 import { saveSettingsAction, markPrintedAction, createBatchAction, updateBatchAction, retestUnitOfficeAction } from "@/app/actions";
 import { statut, byId } from "@/lib/status";
+import { reportFailure } from "@/lib/access/errors";
 import { modele } from "@/lib/label";
 import { printLabels, printSlip } from "@/lib/print";
 import { exportRegistryXlsx } from "@/lib/export";
@@ -204,7 +205,7 @@ function DetailPanel() {
     const out = await printLabels([u], template, t);
     if (out.ok) toast.success(out.message);
     else toast.error(out.message);
-    if (out.ok) void markPrintedAction({ unitIds: [u.id] });
+    if (out.ok) void reportFailure(markPrintedAction({ unitIds: [u.id] }), t, (m) => toast.error(m));
   };
 
   return (
@@ -394,7 +395,7 @@ function ViewLots() {
                 <input ref={qtyRef} type="number" min={1} defaultValue={3} className={inputCls + " w-[90px]"} />
               </Field>
               <Field label={t.startSerial}>
-                <input ref={startRef} type="number" placeholder="auto" className={inputCls + " w-[110px]"} />
+                <input ref={startRef} type="number" placeholder={t.startSerialAuto} className={inputCls + " w-[110px]"} />
               </Field>
               <Field label={t.route}>
                 <select

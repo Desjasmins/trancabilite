@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
-import { errorMessage } from "@/lib/access/errors";
+import { describe, it, expect, vi } from "vitest";
+import { errorMessage, reportFailure } from "@/lib/access/errors";
 import { I } from "@/lib/i18n";
 
 describe("errorMessage — Étant donné le code renvoyé par une Server Action", () => {
@@ -33,5 +33,23 @@ describe("i18n — Étant donné les clés ajoutées par #3", () => {
       expect(I.en[k]).toBeTruthy();
       expect(I.en[k]).not.toBe(I.fr[k]);
     }
+  });
+});
+
+describe("reportFailure — Étant donné une action lancée sans l'attendre (markPrinted, revue #3)", () => {
+  it("Quand elle réussit, alors aucun message", async () => {
+    const notify = vi.fn();
+    await reportFailure(Promise.resolve({ ok: true }), I.fr, notify);
+    expect(notify).not.toHaveBeenCalled();
+  });
+  it("Quand elle est refusée, alors le code traduit", async () => {
+    const notify = vi.fn();
+    await reportFailure(Promise.resolve({ ok: false, error: "GENERIC" }), I.en, notify);
+    expect(notify).toHaveBeenCalledWith(I.en.errors.generic);
+  });
+  it("Quand l'appel échoue (réseau), alors le texte réseau", async () => {
+    const notify = vi.fn();
+    await reportFailure(Promise.reject(new Error("fetch failed")), I.fr, notify);
+    expect(notify).toHaveBeenCalledWith(I.fr.errors.network);
   });
 });

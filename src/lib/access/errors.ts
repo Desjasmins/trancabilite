@@ -13,3 +13,20 @@ export function errorMessage(error: string | undefined, t: Dict): string {
   if (!error || error === "GENERIC") return t.errors.generic;
   return error;
 }
+
+/**
+ * Signale l'échec d'une action lancée sans l'attendre (ex. `markPrintedAction` après
+ * impression) : sans cela, l'échec était silencieux (QA #3, R4).
+ */
+export function reportFailure(
+  call: Promise<{ ok: boolean; error?: string }>,
+  t: Dict,
+  notify: (message: string) => void,
+): Promise<void> {
+  return call.then(
+    (res) => {
+      if (!res.ok) notify(errorMessage(res.error, t));
+    },
+    () => notify(t.errors.network),
+  );
+}

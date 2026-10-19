@@ -6,7 +6,7 @@ import { loadUnits, loadBatches } from "@/lib/queries";
 import { nextSerial } from "@/lib/status";
 import { pad } from "@/lib/label";
 import { createBatchSchema, updateBatchSchema, reprintPrintedSchema } from "@/lib/schemas";
-import { fail, failInvalid, errorText, type ActionResult } from "./_shared";
+import { fail, failInvalid, errorText, BusinessError, type ActionResult } from "./_shared";
 import { withAccess } from "@/lib/access/with-access";
 
 /** Crée un lot (selon une gamme) + N unités. Retourne les unités fraîches. */
@@ -89,13 +89,13 @@ async function updateBatch(input: unknown): Promise<ActionResult> {
         where: { id: d.batchId },
         include: { units: { include: { events: true } } },
       });
-      if (!batch) throw new Error("Lot introuvable");
+      if (!batch) throw new BusinessError("Lot introuvable");
 
       const route = await tx.route.findUnique({
         where: { id: d.routeId },
         include: { steps: true },
       });
-      if (!route) throw new Error("Gamme introuvable");
+      if (!route) throw new BusinessError("Gamme introuvable");
       const steps = route.steps
         .slice()
         .sort((a, b) => a.position - b.position)

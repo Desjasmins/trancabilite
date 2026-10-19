@@ -129,7 +129,7 @@ describe("retestUnitOfficeAction — Étant donné une unité non conforme vue a
 });
 
 describe("getLiveDataAction — Étant donné un client connecté (#3)", () => {
-  it("Quand il recharge, alors la projection client s'applique (aucun réglage ni gabarit ajouté)", async () => {
+  it("Quand il recharge, alors la garde OPEN_UNTIL_KIOSK le laisse passer et il reçoit unités, lots et livraisons, sans réglages ni gabarit", async () => {
     setSession(PROFILES.client.session);
     expect(await getLiveDataAction()).toEqual({ ok: true, units: UNITS, batches: BATCHES, deliveries: DELIVERIES });
   });

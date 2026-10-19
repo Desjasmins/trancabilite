@@ -127,6 +127,17 @@ describe("updateBatchAction — figé (#2)", () => {
   });
 });
 
+describe("updateBatchAction — Étant donné une erreur Prisma (revue #3)", () => {
+  it("Quand la transaction lève une Error technique, alors GENERIC sans le message", async () => {
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    db.$transaction.mockRejectedValueOnce(new Error("Unique constraint failed on the fields: (`serie`)"));
+    const res = await updateBatchAction({ batchId: "B1", projet: "P", reference: "R", routeId: "R1" });
+    expect(res).toEqual({ ok: false, error: "GENERIC" });
+    expect(err).toHaveBeenCalled();
+    err.mockRestore();
+  });
+});
+
 describe("markPrintedAction — figé (#2)", () => {
   it("Quand l'entrée est invalide, alors « Entrée invalide »", async () => {
     expect(await markPrintedAction({ unitIds: [""] })).toEqual({ ok: false, error: "Entrée invalide" });

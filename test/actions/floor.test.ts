@@ -165,6 +165,18 @@ describe("confirmVerifAction — figé (#2)", () => {
   });
 });
 
+describe("errorText — Étant donné une erreur technique pendant une action d'atelier (revue #3)", () => {
+  it("Quand Prisma lève une Error, alors GENERIC : le message n'est pas divulgué, il part au journal serveur", async () => {
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    db.unit.findUnique.mockRejectedValue(new Error("Can't reach database server at db.invalid:5432"));
+    const res = await confirmMontageAction({ unitId: "U1", operator: "Ana" });
+    expect(res).toEqual({ ok: false, error: "GENERIC" });
+    expect(JSON.stringify(res)).not.toContain("db.invalid");
+    expect(err).toHaveBeenCalled();
+    err.mockRestore();
+  });
+});
+
 describe("retestUnitAction — figé (#2)", () => {
   const input = { unitId: "U1", operator: "Ana", note: "réparé" };
   it("Quand l'entrée est invalide, alors message Zod", async () => {

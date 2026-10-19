@@ -20,8 +20,10 @@ describe("allowed — Étant donné la matrice rôles × politiques", () => {
     expect(allowed("STAFF_WRITE", { user: { id: "x", name: "x", email: "x", role: null } })).toBe(false);
   });
 
-  it("Quand on lit OPEN_UNTIL_KIOSK, alors son nom dit qu'elle est temporaire (retirée par #4)", () => {
-    const policy: Policy = "OPEN_UNTIL_KIOSK";
-    expect(policy).toMatch(/UNTIL_KIOSK$/);
-  });
+  it.each(["Admin", "admin  ", "ADMIN", "Superviseur"])(
+    "Quand le rôle vaut « %s » (casse ou espaces), alors STAFF_WRITE est refusé (mutation M4 du QA)",
+    (role) => {
+      expect(allowed("STAFF_WRITE", { user: { id: "x", name: "x", email: "x", role: role as never } })).toBe(false);
+    },
+  );
 });

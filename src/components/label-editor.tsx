@@ -1,5 +1,6 @@
 "use client";
 
+import { useRef } from "react";
 import { toast } from "sonner";
 import { useApp } from "./app-context";
 import { LabelView } from "./label-view";
@@ -63,22 +64,26 @@ export function LabelEditor() {
     version: 0,
   };
 
-  // Mise à jour immédiate (champs contrôlés : sinon la saisie perd des caractères), mais
-  // l'écran revient au gabarit précédent si le serveur refuse : il n'affiche jamais un
-  // gabarit qui n'est pas enregistré (D12, #3).
+  // Mise à jour immédiate (champs contrôlés : sinon la saisie perd des caractères), avec
+  // retour arrière si le serveur refuse (D12, approuvé par Gedeon le 2026-10-19).
+  // Course : seul le DERNIER enregistrement en vol peut revenir en arrière, et il revient au
+  // dernier gabarit CONFIRMÉ, pas à l'état d'avant sa propre modification (revue #3).
+  const confirmed = useRef(template);
+  const seq = useRef(0);
   const commit = (next: LabelTemplate) => {
-    const previous = template;
+    const mine = ++seq.current;
     setTemplate(next);
+    const rollback = (message: string) => {
+      if (mine !== seq.current) return; // un enregistrement plus récent décidera
+      setTemplate(confirmed.current);
+      toast.error(message);
+    };
     void saveTemplateAction(next).then(
       (res) => {
-        if (res.ok) return;
-        setTemplate(previous);
-        toast.error(errorMessage(res.error, t));
+        if (res.ok) confirmed.current = next;
+        else rollback(errorMessage(res.error, t));
       },
-      () => {
-        setTemplate(previous);
-        toast.error(t.errors.network);
-      },
+      () => rollback(t.errors.network),
     );
   };
   const mutate = (fn: (d: LabelTemplate) => void) => {

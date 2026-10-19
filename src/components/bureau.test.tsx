@@ -13,7 +13,9 @@ vi.mock("@/lib/usb", () => ({ connectUSB: vi.fn(), isUsbConnected: () => false }
 vi.mock("sonner", () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
 vi.mock("./app-context", () => ({ useApp: vi.fn() }));
 
-import { retestUnitOfficeAction } from "@/app/actions";
+import { retestUnitOfficeAction, markPrintedAction } from "@/app/actions";
+import { printLabels } from "@/lib/print";
+import { toast } from "sonner";
 import { useApp } from "./app-context";
 import { Bureau } from "./bureau";
 import { LangProvider } from "./lang-provider";
@@ -48,5 +50,20 @@ describe("Bureau, fiche d'unité — Étant donné une unité non conforme (#3, 
     await waitFor(() => expect(setUi).toHaveBeenCalledWith({ openId: null }));
     expect(retestUnitOfficeAction).toHaveBeenCalledWith({ unitId: "U1", note: "réparé" });
     expect(run).toHaveBeenCalledWith(expect.any(Promise), I.fr.toastRetest);
+  });
+
+  it("Quand la réimpression réussit mais le marquage « imprimée » échoue, alors un toast traduit (revue #3, R4)", async () => {
+    vi.mocked(printLabels).mockResolvedValue({ ok: true, message: "ok" } as never);
+    vi.mocked(markPrintedAction).mockResolvedValue({ ok: false, error: "GENERIC" });
+    vi.mocked(useApp).mockReturnValue({
+      units: [blocked], batches: [], deliveries: [], operations: [], routes: [],
+      settings: { sub: "", proj: "", ops: [] }, template: defaultTemplate(),
+      ui: { bureauTab: "reg", query: "", filterStatus: "", openId: "U1", client: false },
+      setUi: vi.fn(), run: vi.fn(), t: I.fr, lang: "fr", pending: false, user: null,
+    } as unknown as ReturnType<typeof useApp>);
+    render(<LangProvider><Bureau /></LangProvider>);
+    fireEvent.click(screen.getByText(I.fr.reprint));
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith(I.fr.errors.generic));
+    expect(markPrintedAction).toHaveBeenCalledWith({ unitIds: ["U1"] });
   });
 });
