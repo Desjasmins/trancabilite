@@ -59,4 +59,17 @@ describe("page d'accueil — Étant donné l'acteur résolu au rendu (#3)", () =
     expect(err).toHaveBeenCalled();
     err.mockRestore();
   });
+
+  it("(régression : R1) Quand l'identité change sans recharger, alors AppProvider change de key et repart de l'instantané projeté", async () => {
+    const keyFor = async (profile: keyof typeof PROFILES) => {
+      setSession(PROFILES[profile].session);
+      return ((await Home()) as ReactElement).key;
+    };
+    const anon = await keyFor("anonyme");
+    const client = await keyFor("client");
+    const admin = await keyFor("admin");
+    expect(new Set([anon, client, admin]).size).toBe(3);
+    expect(await keyFor("client")).toBe(client); // même identité → même état conservé
+  });
 });
+
