@@ -3,7 +3,6 @@
 import { prisma } from "@/lib/db";
 import { EventResult } from "@/generated/prisma/client";
 import { loadUnits } from "@/lib/queries";
-import { statut } from "@/lib/status";
 import {
   confirmMontageSchema,
   confirmMontageBulkSchema,
@@ -13,7 +12,7 @@ import {
   confirmVerifSchema,
   packUnitSchema,
 } from "@/lib/schemas";
-import { fail, failInvalid, errorText, recordOperation, reworkUnit, type ActionResult } from "./_shared";
+import { BusinessError, fail, failInvalid, errorText, recordOperation, reworkUnit, type ActionResult } from "./_shared";
 import { withAccess } from "@/lib/access/with-access";
 import type { Actor } from "@/lib/access/policy";
 
@@ -125,21 +124,38 @@ async function confirmVerif(input: unknown, actor: Actor): Promise<ActionResult>
   }
 }
 
+/**
+ * Emballe une unité prête dans une livraison (#8). Relecture, garde « prête » et
+ * écriture dans une même transaction, sous verrou de version : deux écrans qui
+ * emballent la même unité ne peuvent pas réussir tous les deux. Une livraison
+ * fermée n'est pas refusée ici (décision de Gedeon, comportement conservé).
+ */
 async function packUnit(input: unknown): Promise<ActionResult> {
   const parsed = packUnitSchema.safeParse(input);
   if (!parsed.success) return failInvalid(parsed.error);
   const { unitId, deliveryId } = parsed.data;
 
-  const units = await loadUnits();
-  const u = units.find((x) => x.id === unitId);
-  if (!u) return fail("Unité introuvable");
-  if (statut(u) !== "pret") return fail("Unité non prête à emballer");
+  try {
+    await prisma.$transaction(async (tx) => {
+      const unit = await tx.unit.findUnique({ where: { id: unitId } });
+      if (!unit) throw new BusinessError("Unité introuvable");
+      if (unit.deliveryId) throw new BusinessError("UNIT_ALREADY_PACKED");
+      if (unit.blocked || unit.currentOperationKey !== null)
+        throw new BusinessError("Unité non prête à emballer");
 
-  const delivery = await prisma.delivery.findUnique({ where: { id: deliveryId } });
-  if (!delivery) return fail("Livraison introuvable");
+      const delivery = await tx.delivery.findUnique({ where: { id: deliveryId } });
+      if (!delivery) throw new BusinessError("Livraison introuvable");
 
-  await prisma.unit.update({ where: { id: unitId }, data: { deliveryId } });
-  return { ok: true, units: await loadUnits() };
+      const upd = await tx.unit.updateMany({
+        where: { id: unitId, version: unit.version },
+        data: { deliveryId, version: { increment: 1 } },
+      });
+      if (upd.count === 0) throw new BusinessError("UNIT_PACK_CONFLICT");
+    });
+    return { ok: true, units: await loadUnits() };
+  } catch (e) {
+    return fail(errorText(e));
+  }
 }
 
 // Points d'entrée : chaque export passe par la garde, politique lue dans POLICIES (#3).
