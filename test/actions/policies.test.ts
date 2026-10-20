@@ -20,8 +20,13 @@ describe("POLICIES — Étant donné le tableau unique des politiques (défaut f
     ]);
   });
 
-  it("Quand on liste le reste, alors c'est OPEN_UNTIL_KIOSK, nommé comme temporaire", () => {
-    const others = Object.entries(POLICIES).filter(([, p]) => p !== "STAFF_WRITE");
+  it("Quand on liste ADMIN_WRITE, alors exactement les actions des écrans d'atelier (#4)", () => {
+    const admin = Object.entries(POLICIES).filter(([, p]) => p === "ADMIN_WRITE").map(([n]) => n).sort();
+    expect(admin).toEqual(["listKiosksAction", "pairKioskAction", "renameKioskAction", "revokeKioskAction"]);
+  });
+
+  it("Quand on liste le reste, alors c'est OPEN_UNTIL_KIOSK, nommé comme temporaire (le #5 l'activera)", () => {
+    const others = Object.entries(POLICIES).filter(([, p]) => p !== "STAFF_WRITE" && p !== "ADMIN_WRITE");
     expect(others).toHaveLength(11);
     for (const [, p] of others) expect(p).toBe("OPEN_UNTIL_KIOSK");
   });

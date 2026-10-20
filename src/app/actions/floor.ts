@@ -17,12 +17,15 @@ import { fail, failInvalid, errorText, recordOperation, reworkUnit, type ActionR
 import { withAccess } from "@/lib/access/with-access";
 import type { Actor } from "@/lib/access/policy";
 
-async function confirmMontage(input: unknown): Promise<ActionResult> {
+/** Écran appairé d'où vient l'appel (#4) : écrit au journal, l'opérateur saisi reste intact. */
+const stationOf = (actor: Actor) => actor.kiosk?.id ?? null;
+
+async function confirmMontage(input: unknown, actor: Actor): Promise<ActionResult> {
   const parsed = confirmMontageSchema.safeParse(input);
   if (!parsed.success) return failInvalid(parsed.error);
   const { unitId, operator } = parsed.data;
   try {
-    await recordOperation(unitId, "montage", { operator, result: EventResult.done });
+    await recordOperation(unitId, "montage", { operator, result: EventResult.done, stationId: stationOf(actor) });
     return { ok: true, units: await loadUnits() };
   } catch (e) {
     return fail(errorText(e));
@@ -35,7 +38,7 @@ async function confirmMontage(input: unknown): Promise<ActionResult> {
  * (étape attendue, unité bloquée, verrou optimiste) s'appliquent unité par
  * unité, et un échec n'empêche pas les autres de passer.
  */
-async function confirmMontageBulk(input: unknown): Promise<ActionResult> {
+async function confirmMontageBulk(input: unknown, actor: Actor): Promise<ActionResult> {
   const parsed = confirmMontageBulkSchema.safeParse(input);
   if (!parsed.success) return failInvalid(parsed.error);
   const { unitIds, operator } = parsed.data;
@@ -45,7 +48,7 @@ async function confirmMontageBulk(input: unknown): Promise<ActionResult> {
   const errors: string[] = [];
   for (const id of unitIds) {
     try {
-      await recordOperation(id, "montage", { operator, result: EventResult.done });
+      await recordOperation(id, "montage", { operator, result: EventResult.done, stationId: stationOf(actor) });
       done++;
     } catch (e) {
       failed++;
@@ -63,12 +66,12 @@ async function confirmMontageBulk(input: unknown): Promise<ActionResult> {
  * au journal (l'historique du refus reste intact), déblocage, et l'unité
  * réapparaît dans la file de l'opération où elle avait échoué (test).
  */
-async function retestUnit(input: unknown): Promise<ActionResult> {
+async function retestUnit(input: unknown, actor: Actor): Promise<ActionResult> {
   const parsed = retestUnitSchema.safeParse(input);
   if (!parsed.success) return failInvalid(parsed.error);
   const { unitId, operator, note } = parsed.data;
   try {
-    await reworkUnit(unitId, operator, note);
+    await reworkUnit(unitId, operator, note, stationOf(actor));
   } catch (e) {
     return fail(errorText(e));
   }
@@ -84,14 +87,14 @@ async function retestUnitOffice(input: unknown, actor: Actor): Promise<ActionRes
   if (!parsed.success) return failInvalid(parsed.error);
   try {
     // STAFF_WRITE garantit un utilisateur : `user` n'est jamais nul ici.
-    await reworkUnit(parsed.data.unitId, actor.user!.name, parsed.data.note);
+    await reworkUnit(parsed.data.unitId, actor.user!.name, parsed.data.note, stationOf(actor));
   } catch (e) {
     return fail(errorText(e));
   }
   return { ok: true, units: await loadUnits() };
 }
 
-async function confirmTest(input: unknown): Promise<ActionResult> {
+async function confirmTest(input: unknown, actor: Actor): Promise<ActionResult> {
   const parsed = confirmTestSchema.safeParse(input);
   if (!parsed.success) return failInvalid(parsed.error);
   const { unitId, operator, diel, pol, eff, nc } = parsed.data;
@@ -102,6 +105,7 @@ async function confirmTest(input: unknown): Promise<ActionResult> {
       result: rejected ? EventResult.fail : EventResult.pass,
       data: { diel, pol, eff },
       note: rejected ? nc : "",
+      stationId: stationOf(actor),
     });
     return { ok: true, units: await loadUnits() };
   } catch (e) {
@@ -109,12 +113,12 @@ async function confirmTest(input: unknown): Promise<ActionResult> {
   }
 }
 
-async function confirmVerif(input: unknown): Promise<ActionResult> {
+async function confirmVerif(input: unknown, actor: Actor): Promise<ActionResult> {
   const parsed = confirmVerifSchema.safeParse(input);
   if (!parsed.success) return failInvalid(parsed.error);
   const { unitId, operator } = parsed.data;
   try {
-    await recordOperation(unitId, "verification", { operator, result: EventResult.done });
+    await recordOperation(unitId, "verification", { operator, result: EventResult.done, stationId: stationOf(actor) });
     return { ok: true, units: await loadUnits() };
   } catch (e) {
     return fail(errorText(e));

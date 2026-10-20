@@ -32,12 +32,14 @@ export interface PendingTest {
 export interface UiState {
   mode: "atelier" | "bureau";
   station: StationKey | null;
+  /** Onglet Atelier « Cet écran » (#4). */
+  screen: boolean;
   op: Partial<Record<string, string>>;
   scanUnit: string | null;
   verifArm: boolean;
   pendingTest: PendingTest;
   client: boolean;
-  bureauTab: "reg" | "lots" | "rep" | "label" | "set";
+  bureauTab: "reg" | "lots" | "rep" | "label" | "set" | "kiosks";
   query: string;
   filterStatus: StatusKey | "";
   activeDelivery: string;
@@ -49,6 +51,7 @@ export interface UiState {
 const initialUi: UiState = {
   mode: "atelier",
   station: null,
+  screen: false,
   op: {},
   scanUnit: null,
   verifArm: false,

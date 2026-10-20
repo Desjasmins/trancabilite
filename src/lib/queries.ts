@@ -14,11 +14,13 @@ import type {
 } from "./types";
 
 export async function loadUnits(): Promise<UnitDTO[]> {
-  const rows = await prisma.unit.findMany({
-    include: { events: true },
-    orderBy: { dateCreation: "asc" },
-  });
-  return rows.map(toUnitDTO);
+  const [rows, kiosks] = await Promise.all([
+    prisma.unit.findMany({ include: { events: true }, orderBy: { dateCreation: "asc" } }),
+    // Libellés des écrans (#4) : le journal ne garde que l'id (TraceEvent.stationId).
+    prisma.kiosk.findMany({ select: { id: true, label: true } }),
+  ]);
+  const labels = new Map(kiosks.map((k) => [k.id, k.label]));
+  return rows.map((u) => toUnitDTO(u, labels));
 }
 
 export async function loadBatches(): Promise<BatchDTO[]> {

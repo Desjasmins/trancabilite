@@ -2,7 +2,7 @@ import "server-only";
 
 import { POLICIES, type ActionName } from "@/app/actions/policies";
 import type { ActionResult } from "@/app/actions/_shared";
-import { allowed, type Actor } from "./policy";
+import { allowed, refusal, type Actor } from "./policy";
 import { getActor } from "./actor";
 import type { ErrorCode } from "./errors";
 
@@ -20,7 +20,7 @@ export function withAccess(name: ActionName, handler: Handler) {
     if (!policy) return refuse("FORBIDDEN");
     try {
       const actor = await getActor({ mode: "action" });
-      if (!allowed(policy, actor)) return refuse(actor.user ? "FORBIDDEN" : "AUTH_REQUIRED");
+      if (!allowed(policy, actor)) return refuse(refusal(policy, actor));
       return await handler(input, actor);
     } catch (e) {
       // Le détail (connexion, SQL…) reste au journal serveur ; le client reçoit un code (D9).
