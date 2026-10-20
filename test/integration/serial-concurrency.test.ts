@@ -29,6 +29,8 @@ describe.skipIf(!URL_)("createBatchAction — Étant donné un vrai PostgreSQL l
 
   beforeAll(async () => {
     assertLocalDatabase({ DATABASE_URL: URL_ }); // §12 : jamais une base distante
+    // Prisma se connecte à DATABASE_URL : il doit viser la même base jetable (TRUNCATE plus bas).
+    if (process.env.DATABASE_URL !== URL_) throw new Error("DATABASE_URL doit égaler TEST_PG_URL");
     const { setSession } = await import("../mocks/auth");
     const { PROFILES } = await import("../access/profiles");
     setSession(PROFILES.admin.session);

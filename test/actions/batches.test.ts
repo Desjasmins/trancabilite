@@ -182,6 +182,16 @@ describe("updateBatchAction — Étant donné une erreur Prisma (revue #3)", () 
   });
 });
 
+describe("updateBatchAction — Étant donné un couple projet/référence dont les S.N. existent (#7)", () => {
+  it("Quand l'unicité est violée (P2002), alors refus lisible SERIAL_TAKEN", async () => {
+    db.$transaction.mockRejectedValueOnce(
+      new Prisma.PrismaClientKnownRequestError("Unique constraint failed", { code: "P2002", clientVersion: "7" }),
+    );
+    const res = await updateBatchAction({ batchId: "B1", projet: "P", reference: "R", routeId: "R1" });
+    expect(res).toEqual({ ok: false, error: "SERIAL_TAKEN" });
+  });
+});
+
 describe("markPrintedAction — figé (#2)", () => {
   it("Quand l'entrée est invalide, alors « Entrée invalide »", async () => {
     expect(await markPrintedAction({ unitIds: [""] })).toEqual({ ok: false, error: "Entrée invalide" });
