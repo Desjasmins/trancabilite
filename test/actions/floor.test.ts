@@ -139,7 +139,7 @@ describe("confirmTestAction — figé (#2)", () => {
   });
   // #21 : le motif devient obligatoire dès qu'un essai est refusé (ancien contrat « refus sans NC → nc null » retiré).
   it.each(["diel", "pol", "eff", "visual"])("Quand %s est refusé sans motif, alors refus de l'entrée sans écrire", async (k) => {
-    expect(await confirmTestAction({ ...base, [k]: "refus", nc: "  " })).toEqual({ ok: false, error: "Motif du refus obligatoire" });
+    expect(await confirmTestAction({ ...base, [k]: "refus", nc: "  " })).toEqual({ ok: false, error: "NC_REQUIRED" });
     expect(db.$transaction).not.toHaveBeenCalled();
   });
   it("Quand le visuel manque, alors refus de l'entrée", async () => {
@@ -219,9 +219,9 @@ describe("confirmTestAction — Étant donné l'essai visuel (#21)", () => {
     ["la gamme n'a pas de montage", [{ position: 1, operationKey: "test" }, { position: 2, operationKey: "verification" }]],
     ["le montage suit le test", [{ position: 1, operationKey: "test" }, { position: 2, operationKey: "montage" }]],
     ["l'unité n'a pas de gamme", null],
-  ])("Quand %s, alors refus « Étape de reprise absente de la gamme » sans écrire", async (_l, steps) => {
+  ])("Quand %s, alors refus REWORK_TARGET_INVALID sans écrire", async (_l, steps) => {
     db.unit.findUnique.mockResolvedValue(atTest({ batch: steps ? { route: { steps } } : null }));
-    expect(await confirmTestAction({ ...base, visual: "refus", nc: "r" })).toEqual({ ok: false, error: "Étape de reprise absente de la gamme" });
+    expect(await confirmTestAction({ ...base, visual: "refus", nc: "r" })).toEqual({ ok: false, error: "REWORK_TARGET_INVALID" });
     expect(db.traceEvent.create).not.toHaveBeenCalled();
     expect(db.unit.updateMany).not.toHaveBeenCalled();
   });

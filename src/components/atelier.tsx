@@ -369,7 +369,7 @@ function WaitingList({ station }: { station: StationKey }) {
 /* ===================== Carte d'action ===================== */
 function ActionCard({ unit, station }: { unit: UnitDTO; station: StationKey }) {
   const { ui, setUi, run, t } = useApp();
-  const ncRef = useRef<HTMLTextAreaElement>(null);
+  const [ncText, setNcText] = useState("");
   const op = ui.op[station]!;
 
   const setTg = (k: keyof typeof ui.pendingTest, val: TestResult) => {
@@ -386,8 +386,7 @@ function ActionCard({ unit, station }: { unit: UnitDTO; station: StationKey }) {
     const p = ui.pendingTest;
     if (!p.diel || !p.pol || !p.eff || !p.visual) return;
     const rej = [p.diel, p.pol, p.eff, p.visual].includes("refus");
-    // Le champ du motif est toujours monté avec la carte du Test (caché tant qu'aucun refus).
-    const nc = rej ? (ncRef.current as HTMLTextAreaElement).value.trim() : "";
+    const nc = rej ? ncText.trim() : "";
     // #21 : motif obligatoire dès qu'un essai est refusé (le serveur le vérifie aussi).
     if (rej && !nc) {
       toast.error(t.ncRequired);
@@ -473,7 +472,8 @@ function ActionCard({ unit, station }: { unit: UnitDTO; station: StationKey }) {
             ))}
           </div>
           <textarea
-            ref={ncRef}
+            value={ncText}
+            onChange={(e) => setNcText(e.target.value)}
             rows={2}
             placeholder={t.ncNote}
             className={cn(

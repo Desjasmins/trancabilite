@@ -58,7 +58,7 @@ export const confirmTestSchema = z
   })
   .superRefine((v, ctx) => {
     if ([v.diel, v.pol, v.eff, v.visual].includes("refus") && !v.nc)
-      ctx.addIssue({ code: "custom", path: ["nc"], message: "Motif du refus obligatoire" });
+      ctx.addIssue({ code: "custom", path: ["nc"], message: "NC_REQUIRED" }); // code traduit côté client (#21)
   });
 
 export const confirmVerifSchema = z.object({

@@ -82,7 +82,7 @@ export async function recordOperation(
   opts: {
     operator: string;
     result: EventResult;
-    data?: unknown;
+    data?: Prisma.InputJsonObject;
     note?: string;
     /** Kiosk.id de l'écran appairé (#4) ; null = écran non identifié. */
     stationId?: string | null;
@@ -120,11 +120,11 @@ export async function recordOperation(
       // Garde de cible (#21, B3) : l'étape de reprise doit précéder l'étape courante.
       const to = steps.indexOf(rework.step);
       if (to < 0 || to >= steps.indexOf(operationKey))
-        throw new BusinessError("Étape de reprise absente de la gamme");
+        throw new BusinessError("REWORK_TARGET_INVALID"); // code traduit côté client (#21)
       // Couple fail → rework horodaté depuis l'heure de la base (#19, B1).
       const { failAt, reworkAt } = pairTimestamps(await dbNow(tx));
       await tx.traceEvent.create({
-        data: { ...base, result: EventResult.fail, data: opts.data as object | undefined, createdAt: failAt },
+        data: { ...base, result: EventResult.fail, data: opts.data, createdAt: failAt },
       });
       await tx.traceEvent.create({
         data: { ...base, result: EventResult.rework, data: { to: rework.step, cause: rework.cause }, createdAt: reworkAt },
@@ -133,7 +133,7 @@ export async function recordOperation(
       state = { currentOperationKey: rework.step, blocked: false, nc: note };
     } else {
       await tx.traceEvent.create({
-        data: { ...base, result: opts.result, data: opts.data as object | undefined },
+        data: { ...base, result: opts.result, data: opts.data },
       });
       // Échec : bloquée avec sa NC. Réussite (done/pass) : plus de non-conformité, nc remis à null (#21).
       state = failed
