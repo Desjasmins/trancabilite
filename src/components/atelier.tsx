@@ -238,7 +238,7 @@ function ScanStation({ station }: { station: StationKey }) {
     return (
       <>
         <KBar station={station} extra={extra} />
-        <ActionCard unit={scanned} station={station} />
+        <ActionCard key={scanned.id} unit={scanned} station={station} />
       </>
     );
   return (
@@ -549,7 +549,8 @@ function DefectPhoto({ unitId, path, onChange }: { unitId: string; path: string 
         return;
       }
       onChange(res.upload.path);
-    } catch {
+    } catch (e) {
+      console.error("[photo]", e);
       toast.error(t.photoUploadFail);
     } finally {
       setBusy(false);

@@ -102,7 +102,15 @@ async function confirmTest(input: unknown, actor: Actor): Promise<ActionResult> 
     // #23 : vérification d'existence HORS transaction (revue de design, d) ; chemin déjà validé par Zod.
     const storage = photoStorage();
     if (!storage) return fail("PHOTO_UNAVAILABLE");
-    if (!(await storage.exists(photoPath))) return fail("PHOTO_NOT_FOUND");
+    let found: boolean;
+    try {
+      found = await storage.exists(photoPath);
+    } catch (e) {
+      // Bucket injoignable : l'opérateur peut confirmer sans photo (message traduit), détail au journal.
+      console.error("[confirmTest] photo", e);
+      return fail("PHOTO_UNAVAILABLE");
+    }
+    if (!found) return fail("PHOTO_NOT_FOUND");
   }
   const electricFail = [diel, pol, eff].includes("refus");
   const visualFail = visual === "refus";

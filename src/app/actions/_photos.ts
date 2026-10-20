@@ -36,7 +36,7 @@ export async function createDefectPhotoUpload(input: unknown): Promise<ActionRes
  * l'unité, porter une photo, et ce chemin avoir le préfixe de l'unité.
  */
 export async function getDefectPhotoUrl(input: unknown, actor: Actor): Promise<ActionResult> {
-  if (actor.user?.role === "client") return fail("PHOTO_FORBIDDEN");
+  if (!actor.user || actor.user.role === "client") return fail("PHOTO_FORBIDDEN");
   const parsed = photoUrlSchema.safeParse(input);
   if (!parsed.success) return failInvalid(parsed.error);
   const { unitId, eventId } = parsed.data;

@@ -500,6 +500,12 @@ describe("confirmTestAction — Étant donné une photo de défaut (#23)", () =>
     expect(db.traceEvent.create).not.toHaveBeenCalled();
     expect(db.$transaction).not.toHaveBeenCalled(); // vérification hors transaction (revue d)
   });
+  it("Quand le bucket est injoignable, alors PHOTO_UNAVAILABLE (pas GENERIC), sans événement", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    photoFiles.exists.mockRejectedValue(new Error("503"));
+    expect(await confirmTestAction({ ...refus, photoPath: PHOTO })).toEqual({ ok: false, error: "PHOTO_UNAVAILABLE" });
+    expect(db.traceEvent.create).not.toHaveBeenCalled();
+  });
   it("Quand le stockage n'est pas configuré, alors PHOTO_UNAVAILABLE, sans événement", async () => {
     photoStorage.mockImplementation(() => null);
     expect(await confirmTestAction({ ...refus, photoPath: PHOTO })).toEqual({ ok: false, error: "PHOTO_UNAVAILABLE" });

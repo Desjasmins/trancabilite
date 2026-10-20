@@ -47,11 +47,13 @@ describe("putPhoto — envoi direct à l'URL signée (#23)", () => {
       method: "PUT", body: file, headers: expect.objectContaining({ "content-type": "image/png", "x-upsert": "false" }),
     }));
   });
-  it("Quand le bucket refuse (413), alors false", async () => {
+  it("Quand le bucket refuse (413), alors false et le statut au journal", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
     vi.stubGlobal("fetch", vi.fn(async () => new Response("", { status: 413 })));
     expect(await putPhoto("http://127.0.0.1:1/u", file)).toBe(false);
   });
   it("Quand le réseau tombe, alors false sans lever", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
     vi.stubGlobal("fetch", vi.fn(async () => { throw new TypeError("network"); }));
     expect(await putPhoto("http://127.0.0.1:1/u", file)).toBe(false);
   });

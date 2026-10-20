@@ -50,7 +50,7 @@ describe("projectSnapshot — Étant donné un instantané complet", () => {
     const unit = { id: "U1", montage: step("Établi 2"), test: { ...step("Établi 3"), diel: null }, verification: step(null) };
     const out = projectSnapshot({ units: [unit] }, PROFILES.client.actor);
     expect(out.units[0].montage).toEqual({ par: "Ana", date: null, ecran: null });
-    expect(out.units[0].test).toEqual({ par: "Ana", date: null, ecran: null, diel: null, hasPhoto: false }); // #23 : client → hasPhoto=false
+    expect(out.units[0].test).toEqual({ par: "Ana", date: null, ecran: null, diel: null, hasPhoto: false, eventId: null }); // #23 : client → ni photo ni id d’essai
     expect(out.units[0].verification.ecran).toBeNull();
     expect(unit.montage.ecran).toBe("Établi 2"); // pas de mutation
     // Écran appairé ou staff : libellés gardés.
@@ -78,6 +78,7 @@ describe("projectSnapshot — Étant donné une photo de défaut (#23)", () => {
   ])("Quand l'acteur est %s, alors hasPhoto=false partout, sans muter l'entrée", (_, actor) => {
     const out = projectSnapshot(snap, actor) as { units: Array<{ test: { hasPhoto: boolean } }> };
     expect(out.units.map((x) => x.test.hasPhoto)).toEqual([false, false]);
+    expect(out.units.map((x) => (x.test as { eventId?: unknown }).eventId)).toEqual([null, null]);
     expect((snap.units[0] as { test: { hasPhoto: boolean } }).test.hasPhoto).toBe(true);
   });
   it("Quand un non-staff reçoit des unités sans aucune photo, alors le même objet (aucune copie)", () => {

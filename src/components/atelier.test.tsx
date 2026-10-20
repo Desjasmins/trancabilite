@@ -270,6 +270,7 @@ describe("Atelier, poste Test — Étant donné une photo de défaut (#23)", () 
     expect(screen.queryByText(I.fr.photoAttached)).toBeNull();
   });
   it("Quand l'action lève (réseau), alors « Envoi impossible »", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
     vi.mocked(createDefectPhotoUploadAction).mockRejectedValue(new Error("down"));
     refus();
     choose(file());

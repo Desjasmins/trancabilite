@@ -73,6 +73,10 @@ describe("getDefectPhotoUrlAction — matrice d'accès (#23, B5)", () => {
     expect(await getDefectPhotoUrl({ unitId: "U1", eventId: "E1" }, actor)).toEqual({ ok: false, error: "PHOTO_FORBIDDEN" });
     expect(db.traceEvent.findUnique).not.toHaveBeenCalled();
   });
+  it("Défense en profondeur : le handler refuse un écran sans compte", async () => {
+    const actor = { ...PROFILES.anonyme.actor, kiosk: { id: "k7", label: "Établi 7" } };
+    expect(await getDefectPhotoUrl({ unitId: "U1", eventId: "E1" }, actor)).toEqual({ ok: false, error: "PHOTO_FORBIDDEN" });
+  });
 });
 
 describe("getDefectPhotoUrlAction — propriété de l'événement (#23)", () => {

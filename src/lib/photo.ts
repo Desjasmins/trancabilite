@@ -49,8 +49,10 @@ export async function putPhoto(url: string, file: Blob): Promise<boolean> {
       headers: { "content-type": file.type, "cache-control": "max-age=3600", "x-upsert": "false" },
       body: file,
     });
+    if (!res.ok) console.warn("[putPhoto]", res.status);
     return res.ok;
-  } catch {
+  } catch (e) {
+    console.warn("[putPhoto]", e);
     return false;
   }
 }

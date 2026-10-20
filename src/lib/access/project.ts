@@ -16,7 +16,7 @@ function withoutScreens(u: UnitDTO): UnitDTO {
 
 /** #23 : la présence d'une photo de défaut n'est montrée qu'au staff. */
 function withoutPhoto(u: UnitDTO): UnitDTO {
-  return { ...u, test: { ...u.test, hasPhoto: false } };
+  return { ...u, test: { ...u.test, hasPhoto: false, eventId: null } };
 }
 
 const isStaff = (actor: Actor) => actor.user?.role === "admin" || actor.user?.role === "superviseur";
