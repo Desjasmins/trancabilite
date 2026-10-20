@@ -27,3 +27,13 @@ describe("toUnitDTO — Étant donné l'écran écrit au journal (#4)", () => {
     expect(toUnitDTO(unit([ev("montage", "k1", "1")])).montage.ecran).toBeNull();
   });
 });
+
+describe("toUnitDTO — Étant donné des événements au même instant (#19)", () => {
+  const same = (id: string, result: string, operator: string) =>
+    ({ id, unitId: "U1", operationKey: "test", result, operator, stationId: null, data: null, note: null, createdAt: at("1") });
+  it("Quand fail et pass ont le même createdAt, alors le dernier selon compareEvents gagne, quel que soit l'ordre d'entrée", () => {
+    const a = same("z", "fail", "Ana"), b = same("a", "pass", "Léo");
+    expect(toUnitDTO(unit([b, a])).test.par).toBe("Léo");
+    expect(toUnitDTO(unit([a, b])).test.par).toBe("Léo");
+  });
+});
