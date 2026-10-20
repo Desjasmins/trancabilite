@@ -31,7 +31,7 @@ describe("firstOp / isLastOp — Étant donné une gamme", () => {
 });
 
 // ── #19 (T1) : ordre total du journal et étape courante dérivée ──────────────
-import { compareEvents, deriveCurrentStep, type JournalEvent } from "./process";
+import { compareEvents, deriveCurrentStep, pendingRework, type JournalEvent } from "./process";
 
 const T0 = new Date("2026-10-20T10:00:00.000Z");
 const at = (ms: number) => new Date(T0.getTime() + ms);
@@ -107,5 +107,30 @@ describe("deriveCurrentStep — Étant donné la gamme montage → test → vér
     const j = [e("2", "test", "pass", 1), e("1", "montage", "done", 0)];
     deriveCurrentStep(g, j);
     expect(j.map((x) => x.id)).toEqual(["2", "1"]);
+  });
+});
+
+// #21 (B3, non-bloquant iii) : source unique du badge « Reprise ».
+describe("pendingRework — Étant donné le journal d'une unité (#21)", () => {
+  const at = (ms: number) => new Date(Date.UTC(2026, 9, 20, 10, 0, 0, ms));
+  const ev = (id: string, operationKey: string, result: string, ms: number, data: unknown = null, note: string | null = null) =>
+    ({ id, operationKey, result, createdAt: at(ms), data, note });
+  it("Quand un renvoi existe sans aucun done Montage antérieur, alors il est en attente", () => {
+    expect(pendingRework([ev("a", "test", "fail", 1), ev("b", "test", "rework", 2, { to: "montage" }, "rayure")]))
+      .toEqual({ note: "rayure", at: at(2) });
+  });
+  it("Quand le Montage est refait après le renvoi, alors rien en attente", () => {
+    expect(pendingRework([ev("b", "test", "rework", 2, { to: "montage" }), ev("c", "montage", "done", 3)])).toBeNull();
+  });
+  it("Quand un retest hérité (rework sans data.to) existe, alors il n'est pas un renvoi", () => {
+    expect(pendingRework([ev("a", "montage", "done", 1), ev("b", "test", "rework", 2, null, "x")])).toBeNull();
+  });
+  it("Quand le renvoi et le done Montage ont le même instant, alors l'ordre total tranche (done après rework)", () => {
+    expect(pendingRework([ev("z", "montage", "done", 2), ev("a", "test", "rework", 2, { to: "montage" })])).toBeNull();
+  });
+  it("Quand deux renvois se suivent, alors le dernier est rendu, note absente → chaîne vide", () => {
+    expect(pendingRework([
+      ev("a", "test", "rework", 1, { to: "montage" }, "un"), ev("b", "montage", "done", 2), ev("c", "test", "rework", 3, { to: "montage" }),
+    ])).toEqual({ note: "", at: at(3) });
   });
 });

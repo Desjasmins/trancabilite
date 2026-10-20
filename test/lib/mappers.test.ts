@@ -37,3 +37,41 @@ describe("toUnitDTO — Étant donné des événements au même instant (#19)", 
     expect(toUnitDTO(unit([a, b])).test.par).toBe("Léo");
   });
 });
+
+// #21 (B2, B3) : le Test lit le dernier ESSAI réel ; le badge « Reprise » vient du journal.
+describe("toUnitDTO — Étant donné un renvoi au Montage par le contrôle visuel (#21)", () => {
+  let n = 0;
+  const e = (operationKey: string, result: string, ms: number, over: Record<string, unknown> = {}) =>
+    ({ id: `e${n++}`, unitId: "U1", operationKey, result, operator: "Ana", stationId: null, data: null, note: null,
+      createdAt: new Date(Date.UTC(2026, 9, 20, 10, 0, 0, ms)), ...over });
+  const failV = (ms: number, op = "Ana") => e("test", "fail", ms, { operator: op, note: "rayure",
+    data: { diel: "accept", pol: "refus", eff: "accept", visual: "refus" } });
+  const rework = (ms: number) => e("test", "rework", ms, { operator: "Zoé", note: "rayure", data: { to: "montage", cause: "visual" } });
+  const pass = (ms: number) => e("test", "pass", ms, { operator: "Léo", data: { diel: "accept", pol: "accept", eff: "accept", visual: "accept" } });
+
+  it("Quand fail puis rework, alors test.par/diel/visual restent ceux du fail", () => {
+    const dto = toUnitDTO(unit([e("montage", "done", 0), failV(10), rework(11)]));
+    expect(dto.test).toMatchObject({ par: "Ana", pol: "refus", visual: "refus", date: new Date(Date.UTC(2026, 9, 20, 10, 0, 0, 10)).toISOString() });
+  });
+  it("Quand fail, rework, montage puis pass, alors ceux du pass", () => {
+    const dto = toUnitDTO(unit([e("montage", "done", 0), failV(10), rework(11), e("montage", "done", 20), pass(30)]));
+    expect(dto.test).toMatchObject({ par: "Léo", pol: "accept", visual: "accept" });
+  });
+  it("Quand le montage n'a qu'un événement non done au journal, alors il est ignoré pour montage.par", () => {
+    const dto = toUnitDTO(unit([e("montage", "done", 0, { operator: "Max" }), e("montage", "rework", 5, { operator: "X" })]));
+    expect(dto.montage.par).toBe("Max");
+  });
+  it("Quand un ancien essai n'a pas de visuel, alors visual null", () => {
+    expect(toUnitDTO(unit([e("test", "pass", 1, { data: { diel: "accept" } })])).test.visual).toBeNull();
+  });
+  it("Quand l'unité vient d'être renvoyée, alors reprise = { note, at } du rework", () => {
+    const dto = toUnitDTO(unit([e("montage", "done", 0), failV(10), rework(11)]));
+    expect(dto.reprise).toEqual({ note: "rayure", at: new Date(Date.UTC(2026, 9, 20, 10, 0, 0, 11)).toISOString() });
+  });
+  it("Quand le Montage est refait après le renvoi, alors reprise null", () => {
+    expect(toUnitDTO(unit([e("montage", "done", 0), failV(10), rework(11), e("montage", "done", 20)])).reprise).toBeNull();
+  });
+  it("Quand aucun renvoi, alors reprise null", () => {
+    expect(toUnitDTO(unit([e("montage", "done", 0)])).reprise).toBeNull();
+  });
+});

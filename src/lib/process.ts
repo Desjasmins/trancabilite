@@ -73,3 +73,19 @@ export function deriveCurrentStep(steps: string[], events: readonly JournalEvent
   }
   return steps.find((k) => !done.has(k)) ?? null;
 }
+
+/**
+ * Renvoi en attente (#21, TDD Rév. 3 §B3) : dernier `rework` avec `data.to = X` qui n'est
+ * suivi (selon `compareEvents`) d'aucun `done` de l'étape X. Source unique du badge
+ * « Reprise » ; `Unit.nc` n'est qu'un cache d'affichage.
+ */
+export function pendingRework<E extends JournalEvent & { note?: string | null }>(
+  events: readonly E[],
+): { note: string; at: Date } | null {
+  let pending: E | null = null;
+  for (const ev of [...events].sort(compareEvents)) {
+    if (ev.result === "rework" && reworkTarget(ev.data)) pending = ev;
+    else if (pending && ev.result === "done" && ev.operationKey === reworkTarget(pending.data)) pending = null;
+  }
+  return pending ? { note: pending.note ?? "", at: pending.createdAt } : null;
+}

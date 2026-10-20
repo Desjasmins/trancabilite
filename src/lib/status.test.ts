@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { statut, nextSerial } from "./status";
+import { statut, nextSerial, queueFor } from "./status";
 import type { UnitDTO } from "./types";
 
 function unite(p: Partial<UnitDTO>): UnitDTO {
@@ -47,5 +47,14 @@ describe("nextSerial — Étant donné des unités existantes", () => {
   });
   it("Quand une série n'est pas numérique, alors elle est ignorée", () => {
     expect(nextSerial([unite({ serie: "abc" }), unite({ serie: "002" })], "P1", "R1")).toBe(3);
+  });
+});
+
+describe("queueFor — Étant donné une unité renvoyée au Montage par le contrôle visuel (#21)", () => {
+  it("Quand l'unité est non bloquée à montage avec une reprise, alors elle est dans la file du Montage et pas du Test", () => {
+    const u = unite({ id: "R", currentOperationKey: "montage", blocked: false, nc: "rayure", reprise: { note: "rayure", at: "2026-10-20T10:00:00.001Z" } });
+    expect(queueFor([u], "montage").map((x) => x.id)).toEqual(["R"]);
+    expect(queueFor([u], "test")).toEqual([]);
+    expect(statut(u)).toBe("montage");
   });
 });

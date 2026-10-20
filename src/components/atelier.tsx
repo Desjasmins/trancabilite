@@ -24,6 +24,10 @@ import { modele } from "@/lib/label";
 import { printLabels, printSlip } from "@/lib/print";
 import type { StationKey, UnitDTO, TestResult } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { testsFor } from "@/lib/tests";
+
+/** Aucun résultat d'essai choisi (PAN 003 + contrôle visuel, #21). */
+const EMPTY_TEST = { diel: null, pol: null, eff: null, visual: null } as const;
 
 const STATION_ORDER: StationKey[] = [
   "etiquettes",
@@ -190,7 +194,7 @@ function ScanInput() {
       toast.error(t.notFound);
       return;
     }
-    setUi({ scanUnit: u.id, pendingTest: { diel: null, pol: null, eff: null }, verifArm: false });
+    setUi({ scanUnit: u.id, pendingTest: EMPTY_TEST, verifArm: false });
   };
 
   return (
@@ -321,7 +325,7 @@ function WaitingList({ station }: { station: StationKey }) {
                   ? toggleSel(u.id)
                   : setUi({
                       scanUnit: u.id,
-                      pendingTest: { diel: null, pol: null, eff: null },
+                      pendingTest: EMPTY_TEST,
                       verifArm: false,
                     })
               }
@@ -346,6 +350,12 @@ function WaitingList({ station }: { station: StationKey }) {
               <div className="mt-1 font-mono text-[13px] text-muted-foreground">
                 S.N. {u.serie}
               </div>
+              {u.reprise && (
+                <div className="mt-2 text-[12px]">
+                  <span className="rounded-full border border-amber px-2 py-0.5 font-bold text-amber">{t.reworkBadge}</span>
+                  {u.reprise.note && <span className="ml-1.5 block truncate pt-1 text-muted-foreground">{u.reprise.note}</span>}
+                </div>
+              )}
             </button>
           ))}
         </div>
@@ -374,21 +384,21 @@ function ActionCard({ unit, station }: { unit: UnitDTO; station: StationKey }) {
 
   const doTest = async () => {
     const p = ui.pendingTest;
-    if (!p.diel || !p.pol || !p.eff) return;
-    const rej = [p.diel, p.pol, p.eff].includes("refus");
+    if (!p.diel || !p.pol || !p.eff || !p.visual) return;
+    const rej = [p.diel, p.pol, p.eff, p.visual].includes("refus");
+    // Le champ du motif est toujours monté avec la carte du Test (caché tant qu'aucun refus).
+    const nc = rej ? (ncRef.current as HTMLTextAreaElement).value.trim() : "";
+    // #21 : motif obligatoire dès qu'un essai est refusé (le serveur le vérifie aussi).
+    if (rej && !nc) {
+      toast.error(t.ncRequired);
+      return;
+    }
     const res = await run(
-      confirmTestAction({
-        unitId: unit.id,
-        operator: op,
-        diel: p.diel,
-        pol: p.pol,
-        eff: p.eff,
-        nc: rej ? ncRef.current?.value ?? "" : "",
-      }),
-      rej ? t.toastReject : t.toastTest,
+      confirmTestAction({ unitId: unit.id, operator: op, diel: p.diel, pol: p.pol, eff: p.eff, visual: p.visual, nc }),
+      p.visual === "refus" ? t.toastVisualRework : rej ? t.toastReject : t.toastTest,
       rej,
     );
-    if (res.ok) setUi({ scanUnit: null, pendingTest: { diel: null, pol: null, eff: null } });
+    if (res.ok) setUi({ scanUnit: null, pendingTest: EMPTY_TEST });
   };
 
   const doVerif = async () => {
@@ -415,6 +425,12 @@ function ActionCard({ unit, station }: { unit: UnitDTO; station: StationKey }) {
         S.N. {unit.serie} · {unit.dessin || ""}
       </div>
 
+      {station === "montage" && unit.reprise && (
+        <div className="mt-3.5 rounded-[10px] border border-[#5a4a23] bg-[#3a3017] px-[15px] py-3 text-[13px] text-amber">
+          {unit.reprise.note ? `${t.reworkFromVisual} — ${unit.reprise.note}` : t.reworkFromVisual}
+        </div>
+      )}
+
       {station === "montage" && (
         <BigBtn onClick={doMontage}>
           {t.confirmMont} — {op}
@@ -436,14 +452,14 @@ function ActionCard({ unit, station }: { unit: UnitDTO; station: StationKey }) {
       {station === "test" && !unit.blocked && (
         <>
           <div className="mt-5">
-            {(["diel", "pol", "eff"] as const).map((k) => (
+            {testsFor().map((k) => (
               <div
                 key={k}
                 className="flex items-center justify-between gap-3 border-t border-line py-4 first:border-t-0"
               >
                 <div className="text-[17px] font-bold">
                   {t[k]}
-                  <small className="block text-[11px] font-normal text-faint">PAN 003</small>
+                  <small className="block text-[11px] font-normal text-faint">{k === "visual" ? t.visualHint : "PAN 003"}</small>
                 </div>
                 <div className="flex gap-2">
                   <TgBtn on={ui.pendingTest[k] === "accept"} kind="a" onClick={() => setTg(k, "accept")}>

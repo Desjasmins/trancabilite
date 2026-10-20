@@ -45,14 +45,21 @@ export const confirmMontageSchema = z.object({
   operator: z.string().trim().min(1, "Opérateur requis").max(80),
 });
 
-export const confirmTestSchema = z.object({
-  unitId: z.string().min(1),
-  operator: z.string().trim().min(1).max(80),
-  diel: testResult,
-  pol: testResult,
-  eff: testResult,
-  nc: z.string().trim().max(500).optional().default(""),
-});
+/** #21 : `visual` obligatoire ; le motif (`nc`) l'est dès qu'un essai est refusé. */
+export const confirmTestSchema = z
+  .object({
+    unitId: z.string().min(1),
+    operator: z.string().trim().min(1).max(80),
+    diel: testResult,
+    pol: testResult,
+    eff: testResult,
+    visual: testResult,
+    nc: z.string().trim().max(500).optional().default(""),
+  })
+  .superRefine((v, ctx) => {
+    if ([v.diel, v.pol, v.eff, v.visual].includes("refus") && !v.nc)
+      ctx.addIssue({ code: "custom", path: ["nc"], message: "Motif du refus obligatoire" });
+  });
 
 export const confirmVerifSchema = z.object({
   unitId: z.string().min(1),

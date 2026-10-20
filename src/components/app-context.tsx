@@ -28,6 +28,7 @@ export interface PendingTest {
   diel: TestResult;
   pol: TestResult;
   eff: TestResult;
+  visual: TestResult;
 }
 
 export interface UiState {
@@ -56,7 +57,7 @@ const initialUi: UiState = {
   op: {},
   scanUnit: null,
   verifArm: false,
-  pendingTest: { diel: null, pol: null, eff: null },
+  pendingTest: { diel: null, pol: null, eff: null, visual: null },
   client: false,
   bureauTab: "reg",
   query: "",

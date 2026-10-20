@@ -16,6 +16,9 @@ export const I = {
     sameWarn: "⚠ Vérificateur = monteur. La séparation des tâches est recommandée (ISO 9001). Touchez à nouveau pour confirmer.",
     ncNote: "Note de non-conformité (cause, disposition)…",
     toastMont: "Montage confirmé", toastTest: "Tests enregistrés", toastReject: "NON CONFORME — unité bloquée",
+    // #21 — contrôle visuel au poste Test, renvoi au Montage
+    visual: "Contrôle visuel", visualHint: "Aspect, fixations, marquage", ncRequired: "Motif du refus obligatoire",
+    toastVisualRework: "Refus visuel : unité renvoyée au Montage", reworkBadge: "Reprise", reworkFromVisual: "Renvoyée par le contrôle visuel",
     toastVerif: "Vérifiée — prête à emballer", toastPacked: "Ajoutée à la livraison", toastPrinted: "Étiquette envoyée à l'impression",
     cancel: "Annuler",
     testInstructions: "Instructions (PAN 003)", testInstructionsTitle: "Essais électriques — PAN 003",
@@ -131,6 +134,9 @@ export const I = {
     sameWarn: "⚠ Verifier = assembler. Separation of duties is recommended (ISO 9001). Tap again to confirm.",
     ncNote: "Nonconformance note (cause, disposition)…",
     toastMont: "Assembly confirmed", toastTest: "Results recorded", toastReject: "NONCONFORMING — unit blocked",
+    // #21 — visual inspection at the Test station, sent back to Assembly
+    visual: "Visual inspection", visualHint: "Appearance, fasteners, marking", ncRequired: "Reason for failure required",
+    toastVisualRework: "Visual inspection failed: unit sent back to Assembly", reworkBadge: "Rework", reworkFromVisual: "Sent back by visual inspection",
     toastVerif: "Verified — ready to pack", toastPacked: "Added to delivery", toastPrinted: "Label sent to printer",
     cancel: "Cancel",
     testInstructions: "Instructions (PAN 003)", testInstructionsTitle: "Electrical tests — PAN 003",
