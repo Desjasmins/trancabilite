@@ -12,6 +12,7 @@ import { setSession } from "../mocks/auth";
 import { PROFILES } from "../access/profiles";
 import { resetQueriesMock, loadUnits, UNITS, BATCHES } from "./queries-mock";
 import { createBatchAction, updateBatchAction, markPrintedAction } from "@/app/actions";
+import { Prisma } from "@/generated/prisma/client";
 
 const db = prisma as unknown as PrismaMock;
 const steps = [{ position: 2, operationKey: "test" }, { position: 1, operationKey: "assemblage" }];
@@ -21,10 +22,12 @@ beforeEach(() => {
   resetQueriesMock();
   setSession(PROFILES.admin.session); // #3 : les écritures du Bureau exigent un staff
   db.batch.create.mockResolvedValue({ id: "B1" });
-  // `$transaction([...])` du bouchon fait Promise.all des promesses rendues par unit.create.
-  let i = 0;
-  db.unit.create.mockImplementation(async () => ({ id: `N${++i}` }));
+  // #7 : unités créées d'un seul coup dans la transaction ; séries relues via tx.unit.findMany.
+  db.unit.findMany.mockResolvedValue([]);
+  db.unit.createManyAndReturn.mockImplementation(async (a: { data: unknown[] }) =>
+    a.data.map((_d, i) => ({ id: `N${i + 1}` })));
 });
+const unitRows = () => db.unit.createManyAndReturn.mock.calls[0][0].data;
 
 describe("createBatchAction — figé (#2)", () => {
   const input = { po: "PO1", projet: "P", reference: "R", qty: 2, operator: "Ana", sub: "" };
@@ -34,20 +37,21 @@ describe("createBatchAction — figé (#2)", () => {
   });
   it("Quand une gamme est demandée, alors lot + N unités à la 1re étape triée, séries suivant l'existant", async () => {
     db.route.findUnique.mockResolvedValue({ id: "G1", steps });
-    loadUnits.mockResolvedValueOnce([{ projet: "P", reference: "R", serie: "007" }]);
+    db.unit.findMany.mockResolvedValueOnce([{ projet: "P", reference: "R", serie: "007" }]);
     const r = await createBatchAction({ ...input, routeId: "G1" });
     expect(r).toEqual({ ok: true, units: UNITS, batches: BATCHES, createdIds: ["N1", "N2"] });
     expect(db.route.findUnique).toHaveBeenCalledWith({ where: { id: "G1" }, include: { steps: true } });
     expect(db.batch.create).toHaveBeenCalledWith({ data: {
       po: "PO1", projet: "P", reference: "R", sub: null, createdBy: "Ana", routeId: "G1",
     } });
-    const first = db.unit.create.mock.calls[0][0];
-    expect(first).toMatchObject({ data: {
+    expect(db.unit.createManyAndReturn.mock.calls[0][0].select).toEqual({ id: true });
+    const [first, second] = unitRows();
+    expect(first).toMatchObject({
       serie: "008", projet: "P", reference: "R", po: "PO1", sub: null, batchId: "B1",
       etiquettePar: "Ana", etiquetteImprimee: false, currentOperationKey: "assemblage",
-    }, select: { id: true } });
-    expect(first.data.etiquetteDate).toBeInstanceOf(Date);
-    expect(db.unit.create.mock.calls[1][0].data.serie).toBe("009");
+    });
+    expect(first.etiquetteDate).toBeInstanceOf(Date);
+    expect(second.serie).toBe("009");
   });
   it("Quand aucune gamme n'est demandée, alors la gamme par défaut est cherchée", async () => {
     db.route.findFirst.mockResolvedValueOnce({ id: "DEF", steps });
@@ -62,9 +66,49 @@ describe("createBatchAction — figé (#2)", () => {
     await createBatchAction({ ...input, routeId: "X", start: "50", po: "", operator: null, qty: 1 });
     expect(db.route.findFirst).toHaveBeenNthCalledWith(2, { include: { steps: true } });
     expect(db.batch.create.mock.calls[0][0].data).toMatchObject({ po: null, createdBy: null, routeId: null });
-    expect(db.unit.create.mock.calls[0][0].data).toMatchObject({
+    expect(unitRows()[0]).toMatchObject({
       serie: "050", po: null, etiquettePar: null, currentOperationKey: "montage",
     });
+  });
+});
+
+describe("createBatchAction — Étant donné deux créations concurrentes (#7)", () => {
+  const input = { projet: "P", reference: "R", qty: 2 };
+  it("Quand le lot est créé, alors verrou consultatif puis relecture des séries, tout dans la transaction", async () => {
+    const order: string[] = [];
+    let inTx = false;
+    db.$transaction.mockImplementationOnce(async (fn: unknown) => {
+      inTx = true;
+      try { return await (fn as (tx: PrismaMock) => unknown)(db); } finally { inTx = false; }
+    });
+    db.$executeRaw.mockImplementationOnce(async () => { order.push(`lock:${inTx}`); return 0; });
+    db.unit.findMany.mockImplementationOnce(async () => { order.push(`read:${inTx}`); return []; });
+    db.batch.create.mockImplementationOnce(async () => { order.push(`batch:${inTx}`); return { id: "B1" }; });
+    db.unit.createManyAndReturn.mockImplementationOnce(async () => { order.push(`units:${inTx}`); return []; });
+    expect((await createBatchAction(input)).ok).toBe(true);
+    expect(order).toEqual(["lock:true", "read:true", "batch:true", "units:true"]);
+    const [sql, ...params] = db.$executeRaw.mock.calls[0] as [TemplateStringsArray, ...unknown[]];
+    expect(sql.join("?")).toContain("pg_advisory_xact_lock(hashtext(");
+    expect(params).toEqual(["P", "R"]);
+    expect(db.unit.findMany).toHaveBeenCalledWith({
+      where: { projet: "P", reference: "R" }, select: { projet: true, reference: true, serie: true },
+    });
+  });
+  it("Quand la création des unités échoue, alors l'erreur remonte de la transaction (aucun lot orphelin)", async () => {
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    db.unit.createManyAndReturn.mockRejectedValueOnce(new Error("boom"));
+    expect(await createBatchAction(input)).toEqual({ ok: false, error: "GENERIC" });
+    // Le lot n'est créé que par le client de transaction : jamais hors de $transaction.
+    expect(db.$transaction).toHaveBeenCalledTimes(1);
+    expect(typeof db.$transaction.mock.calls[0][0]).toBe("function");
+    expect(loadUnits).not.toHaveBeenCalled();
+    err.mockRestore();
+  });
+  it("Quand l'unicité (projet, référence, S.N.) est violée (P2002), alors refus lisible SERIAL_TAKEN", async () => {
+    db.unit.createManyAndReturn.mockRejectedValueOnce(
+      new Prisma.PrismaClientKnownRequestError("Unique constraint failed", { code: "P2002", clientVersion: "7" }),
+    );
+    expect(await createBatchAction(input)).toEqual({ ok: false, error: "SERIAL_TAKEN" });
   });
 });
 
@@ -135,6 +179,16 @@ describe("updateBatchAction — Étant donné une erreur Prisma (revue #3)", () 
     expect(res).toEqual({ ok: false, error: "GENERIC" });
     expect(err).toHaveBeenCalled();
     err.mockRestore();
+  });
+});
+
+describe("updateBatchAction — Étant donné un couple projet/référence dont les S.N. existent (#7)", () => {
+  it("Quand l'unicité est violée (P2002), alors refus lisible SERIAL_TAKEN", async () => {
+    db.$transaction.mockRejectedValueOnce(
+      new Prisma.PrismaClientKnownRequestError("Unique constraint failed", { code: "P2002", clientVersion: "7" }),
+    );
+    const res = await updateBatchAction({ batchId: "B1", projet: "P", reference: "R", routeId: "R1" });
+    expect(res).toEqual({ ok: false, error: "SERIAL_TAKEN" });
   });
 });
 

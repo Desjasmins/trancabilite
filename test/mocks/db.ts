@@ -7,14 +7,15 @@ import { vi, type Mock } from "vitest";
 function model() {
   return {
     findUnique: vi.fn(), findFirst: vi.fn(), findMany: vi.fn(),
-    create: vi.fn(), createMany: vi.fn(), update: vi.fn(), updateMany: vi.fn(),
+    create: vi.fn(), createMany: vi.fn(), createManyAndReturn: vi.fn(), update: vi.fn(), updateMany: vi.fn(),
     upsert: vi.fn(), delete: vi.fn(), deleteMany: vi.fn(), count: vi.fn(),
   };
 }
 
 type Model = ReturnType<typeof model>;
 export type PrismaMock = Record<string, Model> & {
-  $transaction: Mock<(arg: unknown) => Promise<unknown>>;
+  $transaction: Mock<(arg: unknown, opts?: unknown) => Promise<unknown>>;
+  $executeRaw: Mock<(...args: unknown[]) => Promise<number>>;
 };
 
 const models: Record<string, Model> = {};
@@ -31,6 +32,9 @@ for (const name of MODEL_DELEGATES) {
 export const prisma = { ...models } as PrismaMock;
 
 // `$transaction` sous ses deux formes Prisma : callback interactif (reçoit le client) OU tableau.
+// Requête brute (verrou consultatif de createBatch, #7) : rend un nombre de lignes.
+prisma.$executeRaw = vi.fn(async () => 0);
+
 prisma.$transaction = vi.fn(async (arg: unknown): Promise<unknown> => {
   if (typeof arg === "function") return (arg as (tx: PrismaMock) => unknown)(prisma);
   if (Array.isArray(arg)) return Promise.all(arg);
@@ -41,4 +45,5 @@ prisma.$transaction = vi.fn(async (arg: unknown): Promise<unknown> => {
 export function resetDbMock() {
   for (const m of Object.values(models)) for (const fn of Object.values(m)) fn.mockReset();
   prisma.$transaction.mockClear();
+  prisma.$executeRaw.mockClear();
 }

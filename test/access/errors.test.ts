@@ -15,6 +15,13 @@ describe("errorMessage — Étant donné le code renvoyé par une Server Action"
       expect(errorMessage(k, t)).toBe(t.errors[k]);
     }
   });
+  it.each(["fr", "en"] as const)("Quand le code est SERIAL_TAKEN (#7) (%s), alors le texte traduit qui parle de S.N.", (lang) => {
+    const t = I[lang];
+    expect(errorMessage("SERIAL_TAKEN", t)).toBe(t.errors.SERIAL_TAKEN);
+    expect(t.errors.SERIAL_TAKEN).toContain("S.N.");
+    expect(t.errors.SERIAL_TAKEN).not.toMatch(/ [:;?!»]|« /);
+  });
+
   it.each(["fr", "en"] as const)("Quand le code est un refus d'emballage (#8) (%s), alors le texte traduit", (lang) => {
     const t = I[lang];
     for (const k of ["UNIT_ALREADY_PACKED", "UNIT_PACK_CONFLICT"] as const) {

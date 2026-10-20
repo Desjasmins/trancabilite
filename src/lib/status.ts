@@ -26,7 +26,7 @@ export function queueFor(units: UnitDTO[], st: StationKey): UnitDTO[] {
 
 /** Prochain numéro de série pour un couple projet/référence. */
 export function nextSerial(
-  units: UnitDTO[],
+  units: ReadonlyArray<Pick<UnitDTO, "projet" | "reference" | "serie">>,
   projet: string,
   reference: string,
   start?: string | number | null,
