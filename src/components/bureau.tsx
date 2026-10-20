@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/sheet";
 import { saveSettingsAction, markPrintedAction, createBatchAction, updateBatchAction, retestUnitOfficeAction } from "@/app/actions";
 import { statut, byId } from "@/lib/status";
+import { routeLacksTest } from "@/lib/process";
 import { reportFailure } from "@/lib/access/errors";
 import { modele } from "@/lib/label";
 import { printLabels, printSlip } from "@/lib/print";
@@ -391,6 +392,7 @@ function ViewLots() {
                 {t.create}
               </button>
             </div>
+            <NoTestWarning routeId={routeId} />
           </div>
         </details>
       )}
@@ -459,6 +461,23 @@ function ViewLots() {
         <EmptyState>{t.noLots}</EmptyState>
       )}
     </>
+  );
+}
+
+/** Avertissement non bloquant : la gamme choisie n'a pas de poste Test (#20). */
+function NoTestWarning({ routeId }: { routeId: string }) {
+  const { routes, t } = useApp();
+  const route = routes.find((r) => r.id === routeId);
+  const lacks = !!route && routeLacksTest(route.steps);
+  // Région live toujours montée : seul son contenu change, pour que le changement de gamme soit annoncé.
+  return (
+    <div role="status">
+      {lacks && (
+        <p className="m-0 mt-2 rounded-[9px] border border-amber px-3 py-2 text-sm text-amber">
+          {t.warnNoVisualLot}
+        </p>
+      )}
+    </div>
   );
 }
 
@@ -533,6 +552,7 @@ function LotEditForm({ info, onClose }: { info: BatchDTO; onClose: () => void })
           {t.cancel}
         </button>
       </div>
+      <NoTestWarning routeId={routeId} />
       <p className="m-0 mt-2 text-xs text-muted-foreground">{t.editLotRouteHint}</p>
     </div>
   );
