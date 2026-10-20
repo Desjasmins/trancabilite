@@ -12,7 +12,7 @@ unique vers une application **Next.js + PostgreSQL** persistante.
 | UI           | shadcn/ui + Tailwind CSS 4 (thème sombre ambre)  |
 | Base         | PostgreSQL via Prisma 7 (driver adapter `pg`)    |
 | Validation   | Zod 4 (toutes les entrées des Server Actions)    |
-| Persistance  | Server Actions (`src/app/actions.ts`)            |
+| Persistance  | Server Actions (`src/app/actions/`)              |
 | i18n         | FR / EN (dictionnaire `src/lib/i18n.ts`)         |
 | Codes        | `qrcode` (QR) + `jsbarcode` (CODE128) + ZPL      |
 
