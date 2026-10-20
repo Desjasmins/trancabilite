@@ -3,6 +3,7 @@
 import { createContext, useContext, useState, useCallback, useEffect } from "react";
 import { toast } from "sonner";
 import { useLang } from "./lang-provider";
+import { errorMessage } from "@/lib/access/errors";
 import { getLiveDataAction, type ActionResult } from "@/app/actions";
 import { subscribeSync, notifyChange, realtimeEnabled } from "@/lib/realtime";
 import type {
@@ -120,7 +121,8 @@ export function AppProvider({
       try {
         const res = await p;
         if (!res.ok) {
-          toast.error(res.error ?? "Erreur");
+          // Codes (AUTH_REQUIRED, FORBIDDEN, GENERIC) traduits ; message métier tel quel (#3).
+          toast.error(errorMessage(res.error, t));
           return res;
         }
         applyResult(res);
@@ -130,15 +132,15 @@ export function AppProvider({
           else toast.success(successMsg);
         }
         return res;
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : "Erreur réseau";
-        toast.error(msg);
-        return { ok: false, error: msg } as ActionResult;
+      } catch {
+        // L'appel n'a pas abouti (réseau, serveur injoignable) : jamais le message brut.
+        toast.error(t.errors.network);
+        return { ok: false, error: t.errors.network } as ActionResult;
       } finally {
         setPending(false);
       }
     },
-    [applyResult],
+    [applyResult, t],
   );
 
   // Synchro live : signal temps réel + filets de sécurité pour qu'aucun écran

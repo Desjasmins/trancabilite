@@ -2,9 +2,14 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 
 vi.mock("@/lib/db", () => import("../mocks/db"));
 vi.mock("@/lib/queries", () => import("./queries-mock"));
+// #3 : chaque action passe par withAccess → getActor ; session et en-têtes bouchonnés.
+vi.mock("next/headers", () => import("../mocks/headers"));
+vi.mock("@/lib/auth", () => import("../mocks/auth"));
 
 import { prisma } from "@/lib/db";
 import { resetDbMock, type PrismaMock } from "../mocks/db";
+import { setSession } from "../mocks/auth";
+import { PROFILES } from "../access/profiles";
 import { resetQueriesMock, loadUnits, UNITS, BATCHES } from "./queries-mock";
 import { createBatchAction, updateBatchAction, markPrintedAction } from "@/app/actions";
 
@@ -14,6 +19,7 @@ const steps = [{ position: 2, operationKey: "test" }, { position: 1, operationKe
 beforeEach(() => {
   resetDbMock();
   resetQueriesMock();
+  setSession(PROFILES.admin.session); // #3 : les écritures du Bureau exigent un staff
   db.batch.create.mockResolvedValue({ id: "B1" });
   // `$transaction([...])` du bouchon fait Promise.all des promesses rendues par unit.create.
   let i = 0;
@@ -115,9 +121,20 @@ describe("updateBatchAction — figé (#2)", () => {
     expect(await updateBatchAction(input)).toEqual({ ok: false, error: msg });
     expect(db.batch.update).not.toHaveBeenCalled();
   });
-  it("Quand l'erreur n'est pas une Error, alors « Erreur »", async () => {
+  it("Quand l'erreur n'est pas une Error, alors GENERIC (D15, #3)", async () => {
     db.batch.findUnique.mockRejectedValue("x");
-    expect(await updateBatchAction(input)).toEqual({ ok: false, error: "Erreur" });
+    expect(await updateBatchAction(input)).toEqual({ ok: false, error: "GENERIC" });
+  });
+});
+
+describe("updateBatchAction — Étant donné une erreur Prisma (revue #3)", () => {
+  it("Quand la transaction lève une Error technique, alors GENERIC sans le message", async () => {
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    db.$transaction.mockRejectedValueOnce(new Error("Unique constraint failed on the fields: (`serie`)"));
+    const res = await updateBatchAction({ batchId: "B1", projet: "P", reference: "R", routeId: "R1" });
+    expect(res).toEqual({ ok: false, error: "GENERIC" });
+    expect(err).toHaveBeenCalled();
+    err.mockRestore();
   });
 });
 

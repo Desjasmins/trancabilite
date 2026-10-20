@@ -7,6 +7,7 @@ export {
   confirmMontageAction,
   confirmMontageBulkAction,
   retestUnitAction,
+  retestUnitOfficeAction,
   confirmTestAction,
   confirmVerifAction,
   packUnitAction,

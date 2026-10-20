@@ -6,12 +6,13 @@ import { loadUnits, loadBatches } from "@/lib/queries";
 import { nextSerial } from "@/lib/status";
 import { pad } from "@/lib/label";
 import { createBatchSchema, updateBatchSchema, reprintPrintedSchema } from "@/lib/schemas";
-import { fail, type ActionResult } from "./_shared";
+import { fail, failInvalid, errorText, BusinessError, type ActionResult } from "./_shared";
+import { withAccess } from "@/lib/access/with-access";
 
 /** Crée un lot (selon une gamme) + N unités. Retourne les unités fraîches. */
-export async function createBatchAction(input: unknown): Promise<ActionResult> {
+async function createBatch(input: unknown): Promise<ActionResult> {
   const parsed = createBatchSchema.safeParse(input);
-  if (!parsed.success) return fail(parsed.error.issues[0]?.message ?? "Entrée invalide");
+  if (!parsed.success) return failInvalid(parsed.error);
   const d = parsed.data;
 
   // Gamme : celle demandée, sinon la gamme par défaut, sinon n'importe laquelle.
@@ -77,9 +78,9 @@ export async function createBatchAction(input: unknown): Promise<ActionResult> {
  * (première opération de la nouvelle gamme sans événement réussi). Les unités
  * bloquées (non conformes) ou déjà livrées ne sont pas déplacées.
  */
-export async function updateBatchAction(input: unknown): Promise<ActionResult> {
+async function updateBatch(input: unknown): Promise<ActionResult> {
   const parsed = updateBatchSchema.safeParse(input);
-  if (!parsed.success) return fail(parsed.error.issues[0]?.message ?? "Entrée invalide");
+  if (!parsed.success) return failInvalid(parsed.error);
   const d = parsed.data;
 
   try {
@@ -88,13 +89,13 @@ export async function updateBatchAction(input: unknown): Promise<ActionResult> {
         where: { id: d.batchId },
         include: { units: { include: { events: true } } },
       });
-      if (!batch) throw new Error("Lot introuvable");
+      if (!batch) throw new BusinessError("Lot introuvable");
 
       const route = await tx.route.findUnique({
         where: { id: d.routeId },
         include: { steps: true },
       });
-      if (!route) throw new Error("Gamme introuvable");
+      if (!route) throw new BusinessError("Gamme introuvable");
       const steps = route.steps
         .slice()
         .sort((a, b) => a.position - b.position)
@@ -140,12 +141,12 @@ export async function updateBatchAction(input: unknown): Promise<ActionResult> {
       }
     });
   } catch (e) {
-    return fail(e instanceof Error ? e.message : "Erreur");
+    return fail(errorText(e));
   }
   return { ok: true, units: await loadUnits(), batches: await loadBatches() };
 }
 
-export async function markPrintedAction(input: unknown): Promise<ActionResult> {
+async function markPrinted(input: unknown): Promise<ActionResult> {
   const parsed = reprintPrintedSchema.safeParse(input);
   if (!parsed.success) return fail("Entrée invalide");
   await prisma.unit.updateMany({
@@ -153,4 +154,18 @@ export async function markPrintedAction(input: unknown): Promise<ActionResult> {
     data: { etiquetteImprimee: true },
   });
   return { ok: true, units: await loadUnits() };
+}
+
+// Points d'entrée : chaque export passe par la garde, politique lue dans POLICIES (#3).
+const createBatchGuarded = withAccess("createBatchAction", createBatch);
+export async function createBatchAction(input: unknown): Promise<ActionResult> {
+  return createBatchGuarded(input);
+}
+const updateBatchGuarded = withAccess("updateBatchAction", updateBatch);
+export async function updateBatchAction(input: unknown): Promise<ActionResult> {
+  return updateBatchGuarded(input);
+}
+const markPrintedGuarded = withAccess("markPrintedAction", markPrinted);
+export async function markPrintedAction(input: unknown): Promise<ActionResult> {
+  return markPrintedGuarded(input);
 }

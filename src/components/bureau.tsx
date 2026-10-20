@@ -13,8 +13,9 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import { saveSettingsAction, markPrintedAction, createBatchAction, updateBatchAction, retestUnitAction } from "@/app/actions";
+import { saveSettingsAction, markPrintedAction, createBatchAction, updateBatchAction, retestUnitOfficeAction } from "@/app/actions";
 import { statut, byId } from "@/lib/status";
+import { reportFailure } from "@/lib/access/errors";
 import { modele } from "@/lib/label";
 import { printLabels, printSlip } from "@/lib/print";
 import { exportRegistryXlsx } from "@/lib/export";
@@ -182,7 +183,7 @@ function Td({
 }
 
 function DetailPanel() {
-  const { units, ui, setUi, template, run, user, t, pending } = useApp();
+  const { units, ui, setUi, template, run, t, pending } = useApp();
   const u = ui.openId ? byId(units, ui.openId) : null;
   const open = !!u;
   const s = u ? statut(u) : "montage";
@@ -192,11 +193,8 @@ function DetailPanel() {
   const retest = async () => {
     if (!u) return;
     const res = await run(
-      retestUnitAction({
-        unitId: u.id,
-        operator: user?.name || "Bureau",
-        note: retestRef.current?.value,
-      }),
+      // L'opérateur est le compte connecté, lu côté serveur (#3).
+      retestUnitOfficeAction({ unitId: u.id, note: retestRef.current?.value }),
       t.toastRetest,
     );
     if (res.ok) setUi({ openId: null });
@@ -207,7 +205,7 @@ function DetailPanel() {
     const out = await printLabels([u], template, t);
     if (out.ok) toast.success(out.message);
     else toast.error(out.message);
-    if (out.ok) void markPrintedAction({ unitIds: [u.id] });
+    if (out.ok) void reportFailure(markPrintedAction({ unitIds: [u.id] }), t, (m) => toast.error(m));
   };
 
   return (
@@ -397,7 +395,7 @@ function ViewLots() {
                 <input ref={qtyRef} type="number" min={1} defaultValue={3} className={inputCls + " w-[90px]"} />
               </Field>
               <Field label={t.startSerial}>
-                <input ref={startRef} type="number" placeholder="auto" className={inputCls + " w-[110px]"} />
+                <input ref={startRef} type="number" placeholder={t.startSerialAuto} className={inputCls + " w-[110px]"} />
               </Field>
               <Field label={t.route}>
                 <select
