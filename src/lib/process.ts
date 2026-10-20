@@ -15,3 +15,11 @@ export function nextOp(steps: string[], current: string): string | null {
 export function isLastOp(steps: string[], current: string): boolean {
   return steps.indexOf(current) === steps.length - 1;
 }
+
+/** Clé de l'opération qui porte l'essai (poste Test). */
+export const TEST_OP = "test";
+
+/** Vrai si la gamme n'a pas de poste Test : ses unités ne passeront pas le contrôle visuel (#20). */
+export function routeLacksTest(steps: string[]): boolean {
+  return !steps.includes(TEST_OP);
+}
