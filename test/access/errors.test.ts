@@ -15,6 +15,12 @@ describe("errorMessage — Étant donné le code renvoyé par une Server Action"
       expect(errorMessage(k, t)).toBe(t.errors[k]);
     }
   });
+  it.each(["fr", "en"] as const)("Quand le code est SERIAL_TAKEN (#7) (%s), alors le texte traduit qui parle de S.N.", (lang) => {
+    const t = I[lang];
+    expect(errorMessage("SERIAL_TAKEN", t)).toBe(t.errors.SERIAL_TAKEN);
+    expect(t.errors.SERIAL_TAKEN).toContain("S.N.");
+    expect(t.errors.SERIAL_TAKEN).not.toMatch(/ [:;?!»]|« /);
+  });
   it("Quand on lit les textes d'écran en français, alors insécables avant « : », « ? » et dans les guillemets", () => {
     expect(I.fr.stationPairedAs).toBe("Écran enregistré\u00a0:");
     expect(I.fr.stationRevokeConfirm).toBe("Retirer l'accès de «\u00a0{label}\u00a0»\u00a0? L'écran ne pourra plus rien valider.");
