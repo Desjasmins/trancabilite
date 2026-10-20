@@ -223,31 +223,58 @@ describe("retestUnitAction — figé (#2)", () => {
   });
 });
 
-describe("packUnitAction — figé (#2)", () => {
-  const pret = { id: "U1", blocked: false, currentOperationKey: null, livraison: null };
-  it("Quand l'entrée est invalide, alors échec", async () => {
+describe("packUnitAction — transaction + verrou de version (#8)", () => {
+  const pret = (over: Record<string, unknown> = {}) =>
+    ({ id: "U1", blocked: false, currentOperationKey: null, deliveryId: null, version: 7, ...over });
+  const input = { unitId: "U1", deliveryId: "L1" };
+  beforeEach(() => db.delivery.findUnique.mockResolvedValue({ id: "L1" }));
+
+  it("Quand l'entrée est invalide, alors échec sans transaction", async () => {
     expect((await packUnitAction({ unitId: "U1", deliveryId: "" })).ok).toBe(false);
+    expect(db.$transaction).not.toHaveBeenCalled();
   });
-  it("Quand l'unité est absente, alors « Unité introuvable »", async () => {
-    loadUnits.mockResolvedValueOnce([]);
-    expect(await packUnitAction({ unitId: "U1", deliveryId: "L1" })).toEqual({ ok: false, error: "Unité introuvable" });
+  it("Quand tout est bon, alors l'unité relue dans la transaction est rattachée sous verrou de version", async () => {
+    db.unit.findUnique.mockResolvedValue(pret());
+    expect(await packUnitAction(input)).toEqual({ ok: true, units: UNITS });
+    expect(db.$transaction).toHaveBeenCalledTimes(1);
+    expect(db.unit.findUnique).toHaveBeenCalledWith({ where: { id: "U1" } });
+    expect(db.delivery.findUnique).toHaveBeenCalledWith({ where: { id: "L1" } });
+    expect(db.unit.updateMany).toHaveBeenCalledWith({
+      where: { id: "U1", version: 7 }, data: { deliveryId: "L1", version: { increment: 1 } },
+    });
+    expect(db.unit.update).not.toHaveBeenCalled();
+    expect(loadUnits).toHaveBeenCalledTimes(1);
   });
-  it("Quand l'unité n'est pas prête, alors refus", async () => {
-    loadUnits.mockResolvedValueOnce([{ ...pret, currentOperationKey: "test" }]);
-    expect(await packUnitAction({ unitId: "U1", deliveryId: "L1" })).toEqual({ ok: false, error: "Unité non prête à emballer" });
+  it("Quand deux écrans emballent la même unité en même temps, alors un seul réussit", async () => {
+    db.unit.findUnique.mockResolvedValue(pret());
+    db.unit.updateMany.mockResolvedValueOnce({ count: 1 }).mockResolvedValueOnce({ count: 0 });
+    const [a, b] = await Promise.all([packUnitAction(input), packUnitAction({ unitId: "U1", deliveryId: "L2" })]);
+    expect([a.ok, b.ok].filter(Boolean)).toHaveLength(1);
+    expect(b).toEqual({ ok: false, error: "UNIT_PACK_CONFLICT" });
+  });
+  it.each([
+    ["introuvable", null, "Unité introuvable"],
+    ["devenue bloquée entre-temps", pret({ blocked: true }), "Unité non prête à emballer"],
+    ["encore en gamme", pret({ currentOperationKey: "verification" }), "Unité non prête à emballer"],
+    ["déjà emballée", pret({ deliveryId: "L0" }), "UNIT_ALREADY_PACKED"],
+  ])("Quand l'unité relue est %s, alors échec sans écrire", async (_l, row, msg) => {
+    db.unit.findUnique.mockResolvedValue(row);
+    expect(await packUnitAction(input)).toEqual({ ok: false, error: msg });
+    expect(db.unit.updateMany).not.toHaveBeenCalled();
+    expect(loadUnits).not.toHaveBeenCalled();
   });
   it("Quand la livraison est absente, alors refus sans écrire", async () => {
-    loadUnits.mockResolvedValueOnce([pret]);
+    db.unit.findUnique.mockResolvedValue(pret());
     db.delivery.findUnique.mockResolvedValue(null);
-    expect(await packUnitAction({ unitId: "U1", deliveryId: "L1" })).toEqual({ ok: false, error: "Livraison introuvable" });
-    expect(db.unit.update).not.toHaveBeenCalled();
+    expect(await packUnitAction(input)).toEqual({ ok: false, error: "Livraison introuvable" });
+    expect(db.unit.updateMany).not.toHaveBeenCalled();
   });
-  it("Quand tout est bon, alors l'unité est rattachée à la livraison", async () => {
-    loadUnits.mockResolvedValueOnce([pret]);
-    db.delivery.findUnique.mockResolvedValue({ id: "L1" });
-    expect(await packUnitAction({ unitId: "U1", deliveryId: "L1" })).toEqual({ ok: true, units: UNITS });
-    expect(db.delivery.findUnique).toHaveBeenCalledWith({ where: { id: "L1" } });
-    expect(db.unit.update).toHaveBeenCalledWith({ where: { id: "U1" }, data: { deliveryId: "L1" } });
+  it("Quand la base lève, alors fail GENERIC sans divulguer le message", async () => {
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    db.unit.findUnique.mockRejectedValue(new Error("Can't reach database server at db.invalid:5432"));
+    expect(await packUnitAction(input)).toEqual({ ok: false, error: "GENERIC" });
+    expect(err).toHaveBeenCalled();
+    err.mockRestore();
   });
 });
 
