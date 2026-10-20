@@ -156,7 +156,10 @@ model Unit {
 
   events TraceEvent[]
 
-  @@index([projet, reference])
+  // Un S.N. est unique par (projet, référence) : dernier rempart contre les doublons
+  // (#7). L'index unique couvre aussi les recherches par (projet, référence), d'où
+  // le retrait de l'ancien @@index([projet, reference]).
+  @@unique([projet, reference, serie])
   @@index([batchId])
   @@index([deliveryId])
   @@index([currentOperationKey])

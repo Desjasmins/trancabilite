@@ -7,10 +7,13 @@ import type { Dict } from "@/lib/i18n";
 export type AccessError = "AUTH_REQUIRED" | "FORBIDDEN" | "KIOSK_REVOKED";
 /** Refus métier des écrans d'atelier (#4), traduits comme les codes d'accès. */
 export type KioskError = "KIOSK_NOT_FOUND" | "KIOSK_LABEL_TAKEN";
-export type ErrorCode = AccessError | KioskError | "GENERIC";
+/** S.N. déjà pris pour ce projet et cette référence (contrainte unique, #7). */
+export type BatchError = "SERIAL_TAKEN";
+export type ErrorCode = AccessError | KioskError | BatchError | "GENERIC";
 
 const TRANSLATED: readonly string[] = [
   "AUTH_REQUIRED", "FORBIDDEN", "KIOSK_REVOKED", "KIOSK_NOT_FOUND", "KIOSK_LABEL_TAKEN",
+  "SERIAL_TAKEN",
 ] satisfies Array<Exclude<ErrorCode, "GENERIC">>;
 
 /** Texte affiché pour l'erreur d'une action : code traduit, sinon message métier tel quel (D4). */

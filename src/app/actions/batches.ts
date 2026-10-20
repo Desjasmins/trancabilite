@@ -1,73 +1,82 @@
 "use server";
 
 import { prisma } from "@/lib/db";
-import { EventResult } from "@/generated/prisma/client";
+import { EventResult, Prisma } from "@/generated/prisma/client";
 import { loadUnits, loadBatches } from "@/lib/queries";
 import { nextSerial } from "@/lib/status";
 import { pad } from "@/lib/label";
-import { createBatchSchema, updateBatchSchema, reprintPrintedSchema } from "@/lib/schemas";
+import { createBatchSchema, updateBatchSchema, reprintPrintedSchema, type CreateBatchInput } from "@/lib/schemas";
 import { fail, failInvalid, errorText, BusinessError, type ActionResult } from "./_shared";
 import { withAccess } from "@/lib/access/with-access";
+
+type Tx = Prisma.TransactionClient;
+
+/** Gamme : celle demandée, sinon la gamme par défaut, sinon n'importe laquelle. */
+async function resolveRoute(tx: Tx, routeId?: string) {
+  const include = { steps: true } as const;
+  return (
+    (routeId ? await tx.route.findUnique({ where: { id: routeId }, include }) : null) ??
+    (await tx.route.findFirst({ where: { isDefault: true }, include })) ??
+    (await tx.route.findFirst({ include }))
+  );
+}
+
+/**
+ * Premier S.N. libre pour (projet, référence), lu DANS la transaction et sous verrou.
+ * Le verrou consultatif (relâché au COMMIT/ROLLBACK) sérialise les créations concurrentes
+ * du même couple : la seconde relit la base après le COMMIT de la première (#7). Le cache
+ * client (loadUnits) n'est pas une source : il ignore les unités en cours de création.
+ */
+async function firstFreeSerial(tx: Tx, d: CreateBatchInput): Promise<number> {
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${d.projet}::text || '|' || ${d.reference}::text))`;
+  const same = await tx.unit.findMany({
+    where: { projet: d.projet, reference: d.reference },
+    select: { projet: true, reference: true, serie: true },
+  });
+  return nextSerial(same, d.projet, d.reference, d.start);
+}
+
+/** Lot + unités en une seule transaction : un échec n'écrit rien (pas de lot orphelin). */
+async function insertBatch(tx: Tx, d: CreateBatchInput): Promise<string[]> {
+  const route = await resolveRoute(tx, d.routeId);
+  const firstOpKey =
+    route?.steps.slice().sort((a, b) => a.position - b.position)[0]?.operationKey ?? "montage";
+  const n = await firstFreeSerial(tx, d);
+  const batch = await tx.batch.create({
+    data: {
+      po: d.po || null, projet: d.projet, reference: d.reference, sub: d.sub || null,
+      createdBy: d.operator || null, routeId: route?.id ?? null,
+    },
+  });
+  const now = new Date();
+  const rows = await tx.unit.createManyAndReturn({
+    data: Array.from({ length: d.qty }, (_v, i) => ({
+      serie: pad(n + i), projet: d.projet, reference: d.reference, po: d.po || null,
+      sub: d.sub || null, batchId: batch.id, etiquettePar: d.operator || null,
+      etiquetteDate: now, etiquetteImprimee: false, currentOperationKey: firstOpKey,
+    })),
+    select: { id: true },
+  });
+  return rows.map((r) => r.id);
+}
+
+/** Violation d'unicité (projet, référence, S.N.) : refus lisible, traduit côté client. */
+function batchErrorText(e: unknown): string {
+  if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") return "SERIAL_TAKEN";
+  return errorText(e);
+}
 
 /** Crée un lot (selon une gamme) + N unités. Retourne les unités fraîches. */
 async function createBatch(input: unknown): Promise<ActionResult> {
   const parsed = createBatchSchema.safeParse(input);
   if (!parsed.success) return failInvalid(parsed.error);
-  const d = parsed.data;
-
-  // Gamme : celle demandée, sinon la gamme par défaut, sinon n'importe laquelle.
-  const route =
-    (d.routeId
-      ? await prisma.route.findUnique({ where: { id: d.routeId }, include: { steps: true } })
-      : null) ??
-    (await prisma.route.findFirst({
-      where: { isDefault: true },
-      include: { steps: true },
-    })) ??
-    (await prisma.route.findFirst({ include: { steps: true } }));
-
-  const steps =
-    route?.steps?.slice().sort((a, b) => a.position - b.position).map((s) => s.operationKey) ?? [];
-  const firstOpKey = steps[0] ?? "montage";
-
-  const current = await loadUnits();
-  let n = nextSerial(current, d.projet, d.reference, d.start);
-
-  const batch = await prisma.batch.create({
-    data: {
-      po: d.po || null,
-      projet: d.projet,
-      reference: d.reference,
-      sub: d.sub || null,
-      createdBy: d.operator || null,
-      routeId: route?.id ?? null,
-    },
-  });
-
-  const createdIds: string[] = [];
-  await prisma
-    .$transaction(
-      Array.from({ length: d.qty }).map(() => {
-        const serie = pad(n++);
-        return prisma.unit.create({
-          data: {
-            serie,
-            projet: d.projet,
-            reference: d.reference,
-            po: d.po || null,
-            sub: d.sub || null,
-            batchId: batch.id,
-            etiquettePar: d.operator || null,
-            etiquetteDate: new Date(),
-            etiquetteImprimee: false,
-            currentOperationKey: firstOpKey,
-          },
-          select: { id: true },
-        });
-      }),
-    )
-    .then((rows) => rows.forEach((r) => createdIds.push(r.id)));
-
+  let createdIds: string[];
+  try {
+    // 500 unités au plus (schéma) : délai relevé au-delà des 5 s par défaut de Prisma.
+    createdIds = await prisma.$transaction((tx) => insertBatch(tx, parsed.data), { timeout: 20_000 });
+  } catch (e) {
+    return fail(batchErrorText(e));
+  }
   return { ok: true, units: await loadUnits(), batches: await loadBatches(), createdIds };
 }
 
@@ -141,7 +150,8 @@ async function updateBatch(input: unknown): Promise<ActionResult> {
       }
     });
   } catch (e) {
-    return fail(errorText(e));
+    // Changer projet/référence peut heurter l'unicité des S.N. (#7) : même refus lisible.
+    return fail(batchErrorText(e));
   }
   return { ok: true, units: await loadUnits(), batches: await loadBatches() };
 }
