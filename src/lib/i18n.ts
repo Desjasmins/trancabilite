@@ -19,6 +19,8 @@ export const I = {
     // #21 — contrôle visuel au poste Test, renvoi au Montage
     visual: "Contrôle visuel", visualHint: "Aspect, fixations, marquage", ncRequired: "Motif du refus obligatoire",
     toastVisualRework: "Refus visuel : unité renvoyée au Montage", reworkBadge: "Reprise", reworkFromVisual: "Renvoyée par le contrôle visuel",
+    // #22 — compteur de reprises (registre et rapport client)
+    reworkCount: "{n} reprise(s)", repReworks: "Reprises",
     toastVerif: "Vérifiée — prête à emballer", toastPacked: "Ajoutée à la livraison", toastPrinted: "Étiquette envoyée à l'impression",
     cancel: "Annuler",
     testInstructions: "Instructions (PAN 003)", testInstructionsTitle: "Essais électriques — PAN 003",
@@ -139,6 +141,8 @@ export const I = {
     // #21 — visual inspection at the Test station, sent back to Assembly
     visual: "Visual inspection", visualHint: "Appearance, fasteners, marking", ncRequired: "Reason for failure required",
     toastVisualRework: "Visual inspection failed: unit sent back to Assembly", reworkBadge: "Rework", reworkFromVisual: "Sent back by visual inspection",
+    // #22 — rework counter (register and customer report)
+    reworkCount: "{n} rework(s)", repReworks: "Reworks",
     toastVerif: "Verified — ready to pack", toastPacked: "Added to delivery", toastPrinted: "Label sent to printer",
     cancel: "Cancel",
     testInstructions: "Instructions (PAN 003)", testInstructionsTitle: "Electrical tests — PAN 003",

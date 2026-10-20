@@ -75,9 +75,11 @@ non-conformités (statut `rejet`).
 
 ### 🗄️ Bureau (gestion) — 5 onglets
 
-- **Registre** — base complète, recherche, filtre par statut, panneau de détail.
+- **Registre** — base complète, recherche, filtre par statut, colonne Contrôle visuel
+  (« — » pour un essai antérieur), panneau de détail avec le nombre de reprises.
 - **Lots** — regroupement par lot, compteurs de statut, réimpression.
-- **Rapports** — bons de livraison imprimables avec signatures.
+- **Rapports** — bons de livraison imprimables avec signatures ; colonnes Contrôle visuel
+  et Reprises (renvois au Montage). Le rapport client ne contient jamais de photo (ISO 9001 §8.7).
 - **Étiquette** — éditeur WYSIWYG drag-and-drop (formats Brother/Dymo/Zebra/Avery,
   QR/code-barres, impression dialogue / Chrome kiosk / **ZPL direct via WebUSB**).
 - **Paramètres** — défauts + opérateurs + statistiques.
