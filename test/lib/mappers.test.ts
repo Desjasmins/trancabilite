@@ -75,3 +75,23 @@ describe("toUnitDTO — Étant donné un renvoi au Montage par le contrôle visu
     expect(toUnitDTO(unit([e("montage", "done", 0)])).reprise).toBeNull();
   });
 });
+
+describe("toUnitDTO — Étant donné une photo de défaut (#23)", () => {
+  const t = (id: string, data: unknown, result = "fail") =>
+    ({ id, unitId: "U1", operationKey: "test", result, operator: "Ana", stationId: null, data, note: null, createdAt: at(id) });
+  it("Quand le dernier essai porte data.photo, alors hasPhoto et l'id de cet essai, jamais le chemin", () => {
+    const dto = toUnitDTO(unit([t("1", { visual: "refus", photo: "units/U1/a.jpg" })]));
+    expect(dto.test).toMatchObject({ hasPhoto: true, eventId: "1" });
+    expect(JSON.stringify(dto)).not.toContain("units/U1/a.jpg");
+  });
+  it("Quand un essai plus récent n'a pas de photo, alors hasPhoto=false et l'id du plus récent", () => {
+    const dto = toUnitDTO(unit([t("1", { photo: "units/U1/a.jpg" }), t("2", { visual: "accept" }, "pass")]));
+    expect(dto.test).toMatchObject({ hasPhoto: false, eventId: "2" });
+  });
+  it.each([["vide", ""], ["non textuelle", 42]])("Quand data.photo est %s, alors hasPhoto=false", (_, photo) => {
+    expect(toUnitDTO(unit([t("1", { photo })])).test.hasPhoto).toBe(false);
+  });
+  it("Quand aucun essai, alors eventId null et hasPhoto false", () => {
+    expect(toUnitDTO(unit([])).test).toMatchObject({ hasPhoto: false, eventId: null });
+  });
+});

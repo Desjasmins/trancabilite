@@ -29,6 +29,10 @@ export interface ActionResult {
   createdIds?: string[];
   doneCount?: number;
   failCount?: number;
+  /** Photo de défaut (#23) : chemin imposé et URL signée de téléversement. */
+  upload?: { path: string; url: string };
+  /** Photo de défaut (#23) : URL de lecture signée (10 min), staff seulement. */
+  photoUrl?: string;
 }
 
 export function fail(error: string): ActionResult {

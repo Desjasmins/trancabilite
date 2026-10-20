@@ -5,6 +5,10 @@ vi.mock("@/lib/queries", () => import("./queries-mock"));
 // #3 : chaque action passe par withAccess → getActor ; session et en-têtes bouchonnés.
 vi.mock("next/headers", () => import("../mocks/headers"));
 vi.mock("@/lib/auth", () => import("../mocks/auth"));
+// #23 : stockage des photos bouchonné (GUARDRAILS §12).
+const photoFiles = { exists: vi.fn(), signUpload: vi.fn(), signRead: vi.fn() };
+const photoStorage = vi.fn((): typeof photoFiles | null => photoFiles);
+vi.mock("@/lib/storage", () => ({ photoStorage: () => photoStorage() }));
 
 import { prisma } from "@/lib/db";
 import { resetDbMock, DB_NOW, type PrismaMock } from "../mocks/db";
@@ -458,5 +462,58 @@ describe("stationId falsifié dans l'entrée — Étant donné un client qui env
     db.unit.findUnique.mockResolvedValue(row);
     expect((await call()).ok).toBe(true);
     expect(db.traceEvent.create.mock.calls[0][0].data.stationId).toBe("k7");
+  });
+});
+
+describe("confirmTestAction — Étant donné une photo de défaut (#23)", () => {
+  const refus = { unitId: "U1", operator: "Ana", diel: "accept", pol: "accept", eff: "accept", visual: "refus", nc: "rayure" };
+  const PHOTO = "units/U1/1f0e.jpg";
+  beforeEach(() => {
+    photoStorage.mockImplementation(() => photoFiles);
+    photoFiles.exists.mockReset();
+    photoFiles.exists.mockResolvedValue(true);
+    db.unit.findUnique.mockResolvedValue(unitRow({ currentOperationKey: "test" }));
+  });
+
+  it("Quand la photo existe sous le préfixe de l'unité, alors data.photo est écrit dans l'événement fail", async () => {
+    expect(await confirmTestAction({ ...refus, photoPath: PHOTO })).toEqual({ ok: true, units: UNITS });
+    expect(photoFiles.exists).toHaveBeenCalledWith(PHOTO);
+    expect(db.traceEvent.create.mock.calls[0][0].data.data).toEqual({
+      diel: "accept", pol: "accept", eff: "accept", visual: "refus", photo: PHOTO,
+    });
+  });
+  it("Quand le chemin vise une autre unité, alors PHOTO_PATH_INVALID, sans stockage ni événement", async () => {
+    expect(await confirmTestAction({ ...refus, photoPath: "units/U2/1f0e.jpg" })).toEqual({ ok: false, error: "PHOTO_PATH_INVALID" });
+    expect(photoFiles.exists).not.toHaveBeenCalled();
+    expect(db.traceEvent.create).not.toHaveBeenCalled();
+  });
+  it.each(["units/U1/../U2/a.jpg", "units/U1/a.gif", "a.jpg"])("Quand le chemin est mal formé (%s), alors refus", async (photoPath) => {
+    expect(await confirmTestAction({ ...refus, photoPath })).toEqual({ ok: false, error: "PHOTO_PATH_INVALID" });
+  });
+  it("Quand le visuel est accepté, alors une photo est refusée", async () => {
+    expect(await confirmTestAction({ ...refus, visual: "accept", diel: "refus", photoPath: PHOTO })).toEqual({ ok: false, error: "PHOTO_PATH_INVALID" });
+    expect(db.traceEvent.create).not.toHaveBeenCalled();
+  });
+  it("Quand le fichier n'est pas dans le bucket, alors PHOTO_NOT_FOUND, sans événement", async () => {
+    photoFiles.exists.mockResolvedValue(false);
+    expect(await confirmTestAction({ ...refus, photoPath: PHOTO })).toEqual({ ok: false, error: "PHOTO_NOT_FOUND" });
+    expect(db.traceEvent.create).not.toHaveBeenCalled();
+    expect(db.$transaction).not.toHaveBeenCalled(); // vérification hors transaction (revue d)
+  });
+  it("Quand le bucket est injoignable, alors PHOTO_UNAVAILABLE (pas GENERIC), sans événement", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    photoFiles.exists.mockRejectedValue(new Error("503"));
+    expect(await confirmTestAction({ ...refus, photoPath: PHOTO })).toEqual({ ok: false, error: "PHOTO_UNAVAILABLE" });
+    expect(db.traceEvent.create).not.toHaveBeenCalled();
+  });
+  it("Quand le stockage n'est pas configuré, alors PHOTO_UNAVAILABLE, sans événement", async () => {
+    photoStorage.mockImplementation(() => null);
+    expect(await confirmTestAction({ ...refus, photoPath: PHOTO })).toEqual({ ok: false, error: "PHOTO_UNAVAILABLE" });
+    expect(db.traceEvent.create).not.toHaveBeenCalled();
+  });
+  it("Quand il n'y a pas de photo, alors le stockage n'est jamais consulté et data sans photo", async () => {
+    await confirmTestAction(refus);
+    expect(photoFiles.exists).not.toHaveBeenCalled();
+    expect(db.traceEvent.create.mock.calls[0][0].data.data).not.toHaveProperty("photo");
   });
 });

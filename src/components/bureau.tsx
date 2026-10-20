@@ -15,9 +15,10 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import { saveSettingsAction, markPrintedAction, createBatchAction, updateBatchAction, retestUnitOfficeAction } from "@/app/actions";
+import { saveSettingsAction, markPrintedAction, createBatchAction, updateBatchAction, retestUnitOfficeAction, getDefectPhotoUrlAction } from "@/app/actions";
+import { Button } from "@/components/ui/button";
 import { statut, byId } from "@/lib/status";
-import { reportFailure } from "@/lib/access/errors";
+import { reportFailure, errorMessage } from "@/lib/access/errors";
 import { modele } from "@/lib/label";
 import { printLabels, printSlip } from "@/lib/print";
 import { exportRegistryXlsx } from "@/lib/export";
@@ -186,6 +187,36 @@ function Td({
   );
 }
 
+/**
+ * Photo de défaut (#23, B5) : bouton réservé au staff (jamais un client, jamais un écran
+ * appairé sans compte staff) ; l'URL signée (10 min) est demandée à l'ouverture.
+ */
+function PhotoViewButton({ u }: { u: UnitDTO }) {
+  const { user, t } = useApp();
+  const [busy, setBusy] = useState(false);
+  const staff = user?.role === "admin" || user?.role === "superviseur";
+  if (!staff || !u.test.hasPhoto || !u.test.eventId) return null;
+  const eventId = u.test.eventId;
+  // Lecture seule : pas de run() (il signalerait un changement aux autres écrans).
+  const view = async () => {
+    setBusy(true);
+    try {
+      const res = await getDefectPhotoUrlAction({ unitId: u.id, eventId });
+      if (res.ok && res.photoUrl) window.open(res.photoUrl, "_blank", "noopener,noreferrer");
+      else toast.error(errorMessage(res.error, t));
+    } catch {
+      toast.error(t.errors.network);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Button type="button" variant="outline" className="mt-3" disabled={busy} onClick={view}>
+      {t.photoView}
+    </Button>
+  );
+}
+
 function DetailPanel() {
   const { units, ui, setUi, template, run, t, pending } = useApp();
   const u = ui.openId ? byId(units, ui.openId) : null;
@@ -252,6 +283,8 @@ function DetailPanel() {
                   {u.nc ? ` — ${u.nc}` : ""}
                 </div>
               )}
+
+              <PhotoViewButton u={u} />
 
               {s === "rejet" && !ui.client && (
                 <div className="mt-3 flex flex-col gap-2">

@@ -27,7 +27,7 @@ export function toUnitDTO(u: UnitWithEvents, kioskLabels: ReadonlyMap<string, st
   const verification = lastEvent(events, "verification", ["done"]);
   const reprise = pendingRework(events);
   const ecran = (e: TraceEvent | undefined) => (e?.stationId && kioskLabels.get(e.stationId)) || null;
-  const testData = (test?.data as { diel?: unknown; pol?: unknown; eff?: unknown; visual?: unknown } | null) ?? {};
+  const testData = (test?.data as { diel?: unknown; pol?: unknown; eff?: unknown; visual?: unknown; photo?: unknown } | null) ?? {};
 
   return {
     id: u.id,
@@ -54,6 +54,8 @@ export function toUnitDTO(u: UnitWithEvents, kioskLabels: ReadonlyMap<string, st
       pol: tr(testData.pol),
       eff: tr(testData.eff),
       visual: tr(testData.visual),
+      eventId: test?.id ?? null,
+      hasPhoto: typeof testData.photo === "string" && testData.photo !== "",
     },
     verification: { par: verification?.operator ?? null, date: iso(verification?.createdAt), ecran: ecran(verification) },
     nc: u.nc ?? "",

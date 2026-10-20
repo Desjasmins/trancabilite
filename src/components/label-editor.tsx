@@ -56,7 +56,7 @@ export function LabelEditor() {
     dateCreation: new Date().toISOString(),
     etiquette: { par: null, date: null, imprimee: false },
     montage: { par: null, date: null, ecran: null },
-    test: { par: null, date: null, diel: null, pol: null, eff: null, visual: null, ecran: null },
+    test: { par: null, date: null, diel: null, pol: null, eff: null, visual: null, ecran: null, eventId: null, hasPhoto: false },
     verification: { par: null, date: null, ecran: null },
     nc: "",
     reprise: null,

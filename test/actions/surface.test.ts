@@ -9,7 +9,7 @@ vi.mock("@/lib/auth", () => import("../mocks/auth"));
 import * as actions from "@/app/actions";
 
 describe("surface de @/app/actions — figée avant le découpage (#2)", () => {
-  it("Quand on liste les exports, alors ce sont exactement les 19 actions (14 de #2 + retestUnitOfficeAction, #3 + 4 actions d'écran, #4), et ni fail ni recordOperation", () => {
+  it("Quand on liste les exports, alors ce sont exactement les 21 actions (14 de #2 + retestUnitOfficeAction, #3 + 4 actions d'écran, #4 + 2 actions photo, #23), et ni fail ni recordOperation", () => {
     expect(Object.keys(actions).sort()).toEqual([
       "closeDeliveryAction", "confirmMontageAction", "confirmMontageBulkAction",
       "confirmTestAction", "confirmVerifAction", "createBatchAction", "createDeliveryAction",
@@ -19,6 +19,8 @@ describe("surface de @/app/actions — figée avant le découpage (#2)", () => {
       "saveSettingsAction", "saveTemplateAction", "updateBatchAction",
       // #4 : appairage des écrans d'atelier (ADMIN_WRITE).
       "listKiosksAction", "pairKioskAction", "renameKioskAction", "revokeKioskAction",
+      // #23 : photo de défaut (envoi FLOOR_WRITE, lecture STAFF_WRITE).
+      "createDefectPhotoUploadAction", "getDefectPhotoUrlAction",
     ].sort());
   });
   it("Quand on regarde chaque export, alors c'est une fonction async", () => {
