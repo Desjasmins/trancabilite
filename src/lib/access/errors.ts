@@ -15,7 +15,9 @@ export type DeliveryError = "DELIVERY_NOT_FOUND";
 export type BatchError = "SERIAL_TAKEN";
 /** Refus du poste Test (#21) : motif manquant, étape de reprise hors gamme. */
 export type TestError = "NC_REQUIRED" | "REWORK_TARGET_INVALID";
-export type ErrorCode = AccessError | KioskError | PackError | DeliveryError | BatchError | TestError | "GENERIC";
+/** Photo de défaut (#23) : stockage non configuré, fichier absent, chemin hors unité, lecture refusée. */
+export type PhotoError = "PHOTO_UNAVAILABLE" | "PHOTO_NOT_FOUND" | "PHOTO_PATH_INVALID" | "PHOTO_FORBIDDEN";
+export type ErrorCode = AccessError | KioskError | PackError | DeliveryError | BatchError | TestError | PhotoError | "GENERIC";
 
 const TRANSLATED: readonly string[] = [
   "AUTH_REQUIRED", "FORBIDDEN", "KIOSK_REVOKED", "KIOSK_NOT_FOUND", "KIOSK_LABEL_TAKEN",
@@ -23,6 +25,7 @@ const TRANSLATED: readonly string[] = [
   "DELIVERY_NOT_FOUND",
   "SERIAL_TAKEN",
   "NC_REQUIRED", "REWORK_TARGET_INVALID",
+  "PHOTO_UNAVAILABLE", "PHOTO_NOT_FOUND", "PHOTO_PATH_INVALID", "PHOTO_FORBIDDEN",
 ] satisfies Array<Exclude<ErrorCode, "GENERIC">>;
 
 /** Texte affiché pour l'erreur d'une action : code traduit, sinon message métier tel quel (D4). */

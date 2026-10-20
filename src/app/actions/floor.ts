@@ -14,6 +14,7 @@ import {
 } from "@/lib/schemas";
 import { BusinessError, fail, failInvalid, errorText, recordOperation, reworkUnit, type ActionResult } from "./_shared";
 import { withAccess } from "@/lib/access/with-access";
+import { photoStorage } from "@/lib/storage";
 import type { Actor } from "@/lib/access/policy";
 
 /** Écran appairé d'où vient l'appel (#4) : écrit au journal, l'opérateur saisi reste intact. */
@@ -96,7 +97,13 @@ async function retestUnitOffice(input: unknown, actor: Actor): Promise<ActionRes
 async function confirmTest(input: unknown, actor: Actor): Promise<ActionResult> {
   const parsed = confirmTestSchema.safeParse(input);
   if (!parsed.success) return failInvalid(parsed.error);
-  const { unitId, operator, diel, pol, eff, visual, nc } = parsed.data;
+  const { unitId, operator, diel, pol, eff, visual, nc, photoPath } = parsed.data;
+  if (photoPath !== undefined) {
+    // #23 : vérification d'existence HORS transaction (revue de design, d) ; chemin déjà validé par Zod.
+    const storage = photoStorage();
+    if (!storage) return fail("PHOTO_UNAVAILABLE");
+    if (!(await storage.exists(photoPath))) return fail("PHOTO_NOT_FOUND");
+  }
   const electricFail = [diel, pol, eff].includes("refus");
   const visualFail = visual === "refus";
   const rejected = electricFail || visualFail;
@@ -106,7 +113,7 @@ async function confirmTest(input: unknown, actor: Actor): Promise<ActionResult> 
     await recordOperation(unitId, "test", {
       operator,
       result: rejected ? EventResult.fail : EventResult.pass,
-      data: { diel, pol, eff, visual },
+      data: photoPath === undefined ? { diel, pol, eff, visual } : { diel, pol, eff, visual, photo: photoPath },
       note: rejected ? nc : "",
       stationId: stationOf(actor),
       reworkTo: visualFail ? { step: "montage", cause: "visual" } : undefined,

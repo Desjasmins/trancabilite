@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { PHOTO_TYPES, isPhotoPathFor } from "./photo";
 
 export const testResult = z.enum(["accept", "refus"]);
 
@@ -55,11 +56,28 @@ export const confirmTestSchema = z
     eff: testResult,
     visual: testResult,
     nc: z.string().trim().max(500).optional().default(""),
+    /** Photo de défaut déjà téléversée (#23) ; préfixe de l'unité vérifié par l'action. */
+    photoPath: z.string().max(200).optional(),
   })
   .superRefine((v, ctx) => {
     if ([v.diel, v.pol, v.eff, v.visual].includes("refus") && !v.nc)
       ctx.addIssue({ code: "custom", path: ["nc"], message: "NC_REQUIRED" }); // code traduit côté client (#21)
+    // #23 : une photo n'accompagne qu'un refus visuel, avec le chemin imposé de l'unité.
+    if (v.photoPath !== undefined && (v.visual !== "refus" || !isPhotoPathFor(v.unitId, v.photoPath)))
+      ctx.addIssue({ code: "custom", path: ["photoPath"], message: "PHOTO_PATH_INVALID" });
   });
+
+/** Téléversement d'une photo de défaut (#23) : le type choisit l'extension, le serveur le chemin. */
+export const photoUploadSchema = z.object({
+  unitId: z.string().min(1),
+  type: z.enum(Object.keys(PHOTO_TYPES) as [keyof typeof PHOTO_TYPES, ...(keyof typeof PHOTO_TYPES)[]]),
+});
+
+/** Lecture d'une photo de défaut (#23, B5) : l'événement doit appartenir à l'unité. */
+export const photoUrlSchema = z.object({
+  unitId: z.string().min(1),
+  eventId: z.string().min(1),
+});
 
 export const confirmVerifSchema = z.object({
   unitId: z.string().min(1),

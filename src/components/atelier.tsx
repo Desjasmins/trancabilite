@@ -13,6 +13,7 @@ import {
   confirmMontageBulkAction,
   retestUnitAction,
   confirmTestAction,
+  createDefectPhotoUploadAction,
   confirmVerifAction,
   packUnitAction,
   createDeliveryAction,
@@ -25,6 +26,9 @@ import { printLabels, printSlip } from "@/lib/print";
 import type { StationKey, UnitDTO, TestResult } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { testsFor } from "@/lib/tests";
+import { checkPhotoFile, putPhoto } from "@/lib/photo";
+import { errorMessage } from "@/lib/access/errors";
+import { Button } from "@/components/ui/button";
 
 /** Aucun résultat d'essai choisi (PAN 003 + contrôle visuel, #21). */
 const EMPTY_TEST = { diel: null, pol: null, eff: null, visual: null } as const;
@@ -370,6 +374,7 @@ function WaitingList({ station }: { station: StationKey }) {
 function ActionCard({ unit, station }: { unit: UnitDTO; station: StationKey }) {
   const { ui, setUi, run, t } = useApp();
   const [ncText, setNcText] = useState("");
+  const [photoPath, setPhotoPath] = useState<string | null>(null);
   const op = ui.op[station]!;
 
   const setTg = (k: keyof typeof ui.pendingTest, val: TestResult) => {
@@ -393,11 +398,18 @@ function ActionCard({ unit, station }: { unit: UnitDTO; station: StationKey }) {
       return;
     }
     const res = await run(
-      confirmTestAction({ unitId: unit.id, operator: op, diel: p.diel, pol: p.pol, eff: p.eff, visual: p.visual, nc }),
+      confirmTestAction({
+        unitId: unit.id, operator: op, diel: p.diel, pol: p.pol, eff: p.eff, visual: p.visual, nc,
+        // #23 : la photo n'accompagne qu'un refus visuel.
+        ...(p.visual === "refus" && photoPath ? { photoPath } : {}),
+      }),
       p.visual === "refus" ? t.toastVisualRework : rej ? t.toastReject : t.toastTest,
       rej,
     );
-    if (res.ok) setUi({ scanUnit: null, pendingTest: EMPTY_TEST });
+    if (res.ok) {
+      setPhotoPath(null);
+      setUi({ scanUnit: null, pendingTest: EMPTY_TEST });
+    }
   };
 
   const doVerif = async () => {
@@ -481,6 +493,9 @@ function ActionCard({ unit, station }: { unit: UnitDTO; station: StationKey }) {
               showNc ? "block" : "hidden",
             )}
           />
+          {ui.pendingTest.visual === "refus" && (
+            <DefectPhoto unitId={unit.id} path={photoPath} onChange={setPhotoPath} />
+          )}
           <BigBtn onClick={doTest}>{t.confirmTest}</BigBtn>
         </>
       )}
@@ -501,6 +516,74 @@ function ActionCard({ unit, station }: { unit: UnitDTO; station: StationKey }) {
       <BigBtn variant="ghost" onClick={() => setUi({ scanUnit: null, verifArm: false })}>
         {t.cancel}
       </BigBtn>
+    </div>
+  );
+}
+
+/**
+ * Photo de défaut facultative au refus visuel (#23). Le fichier part directement de la
+ * tablette vers le bucket privé par une URL signée ; seul son chemin revient au serveur.
+ * Un échec n'empêche jamais de confirmer l'essai sans photo.
+ */
+function DefectPhoto({ unitId, path, onChange }: { unitId: string; path: string | null; onChange: (p: string | null) => void }) {
+  const { t } = useApp();
+  const input = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState(false);
+
+  const pick = async (file: File | undefined) => {
+    if (!file) return;
+    const check = checkPhotoFile(file);
+    if (check !== "ok") {
+      toast.error(check === "size" ? t.photoTooBig : t.photoBadType);
+      return;
+    }
+    setBusy(true);
+    try {
+      const res = await createDefectPhotoUploadAction({ unitId, type: file.type });
+      if (!res.ok || !res.upload) {
+        toast.error(errorMessage(res.error, t));
+        return;
+      }
+      if (!(await putPhoto(res.upload.url, file))) {
+        toast.error(t.photoUploadFail);
+        return;
+      }
+      onChange(res.upload.path);
+    } catch {
+      toast.error(t.photoUploadFail);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
+      <input
+        ref={input}
+        type="file"
+        accept="image/jpeg,image/png,image/webp,image/heic"
+        capture="environment"
+        className="hidden"
+        aria-label={t.photoAdd}
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          e.target.value = ""; // reprendre le même fichier relance l'envoi
+          void pick(file);
+        }}
+      />
+      <Button type="button" variant="outline" disabled={busy} onClick={() => input.current?.click()}>
+        {busy ? t.photoSending : path ? t.photoRetake : t.photoAdd}
+      </Button>
+      {path ? (
+        <>
+          <span className="text-pass">{t.photoAttached}</span>
+          <Button type="button" variant="ghost" onClick={() => onChange(null)}>
+            {t.photoRemove}
+          </Button>
+        </>
+      ) : (
+        <span className="text-faint">{t.photoOptional}</span>
+      )}
     </div>
   );
 }

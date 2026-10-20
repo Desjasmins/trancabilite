@@ -13,10 +13,10 @@ describe("POLICIES — Étant donné le tableau unique des politiques (défaut f
     expect(Object.keys(POLICIES).sort()).toEqual(Object.keys(actions).sort());
   });
 
-  it("Quand on liste STAFF_WRITE, alors exactement les quatre écritures du Bureau", () => {
+  it("Quand on liste STAFF_WRITE, alors exactement les quatre écritures du Bureau et la lecture d'une photo de défaut (#23)", () => {
     const staff = Object.entries(POLICIES).filter(([, p]) => p === "STAFF_WRITE").map(([n]) => n).sort();
     expect(staff).toEqual([
-      "retestUnitOfficeAction", "saveSettingsAction", "saveTemplateAction", "updateBatchAction",
+      "getDefectPhotoUrlAction", "retestUnitOfficeAction", "saveSettingsAction", "saveTemplateAction", "updateBatchAction",
     ]);
   });
 
@@ -29,7 +29,7 @@ describe("POLICIES — Étant donné le tableau unique des politiques (défaut f
     const floor = Object.entries(POLICIES).filter(([, p]) => p === "FLOOR_WRITE").map(([n]) => n).sort();
     expect(floor).toEqual([
       "closeDeliveryAction", "confirmMontageAction", "confirmMontageBulkAction", "confirmTestAction",
-      "confirmVerifAction", "createBatchAction", "createDeliveryAction", "markPrintedAction",
+      "confirmVerifAction", "createBatchAction", "createDefectPhotoUploadAction", "createDeliveryAction", "markPrintedAction",
       "packUnitAction", "retestUnitAction",
     ]);
   });
