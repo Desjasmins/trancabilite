@@ -7,8 +7,10 @@ const tr = (v: unknown): TestResult =>
   v === "accept" || v === "refus" ? v : null;
 
 /** Un renvoi vers une étape antérieure (#21) porte `data.to` ; un retest hérité (`rework` sans cible) n'en est pas un. */
-const isSendBack = (e: TraceEvent) =>
-  e.result === "rework" && typeof (e.data as { to?: unknown } | null)?.to === "string" && (e.data as { to: string }).to !== "";
+const isSendBack = (e: TraceEvent) => {
+  const to = (e.data as { to?: unknown } | null)?.to;
+  return e.result === "rework" && typeof to === "string" && to !== "";
+};
 
 type UnitWithEvents = Unit & { events: TraceEvent[] };
 

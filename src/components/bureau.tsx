@@ -154,7 +154,7 @@ function ViewReg() {
               })
             ) : (
               <tr>
-                <td colSpan={11} className="px-3 py-8 text-center text-muted-foreground">
+                <td colSpan={12} className="px-3 py-8 text-center text-muted-foreground">
                   —
                 </td>
               </tr>
