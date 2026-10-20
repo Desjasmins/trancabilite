@@ -1,5 +1,5 @@
 -- #7 — un S.N. est unique par (projet, référence).
--- AVANT d'appliquer : lancer prisma/checks/7-doublons-serie.sql ; il doit rendre 0 ligne,
+-- Prérequis : baseline 00000000000000_init marquée appliquée (migrate resolve) ; AVANT d'appliquer :
 -- sinon la création de l'index échoue (doublons à résoudre à la main, registre ISO).
 
 -- CreateIndex
