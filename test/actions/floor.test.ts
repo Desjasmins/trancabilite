@@ -37,7 +37,7 @@ beforeEach(() => {
   resetDbMock();
   resetQueriesMock();
   resetHeadersMock();
-  // #3 : aucune session — l'atelier reste ouvert (OPEN_UNTIL_KIOSK), y compris pour un anonyme.
+  // #3 : aucune session — drapeau ACCESS_ENFORCE_FLOOR absent, l'acteur nul (anonyme sans cookie) reste assoupli (#5).
   setSession(null);
   db.unit.updateMany.mockResolvedValue({ count: 1 });
 });

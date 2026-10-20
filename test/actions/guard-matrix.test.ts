@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
 vi.mock("@/lib/db", () => import("../mocks/db"));
 vi.mock("@/lib/queries", () => import("./queries-mock"));
@@ -28,24 +28,31 @@ function loaderCalls(): number {
 }
 
 beforeEach(() => { resetDbMock(); queries.resetQueriesMock(); });
+afterEach(() => vi.unstubAllEnvs());
 
-// Chaque action × chaque profil : le résultat de la garde = allowed(POLICIES[name], acteur).
+// Chaque action × chaque profil × drapeau : le résultat de la garde = allowed(POLICIES[name], acteur, drapeau).
 describe("garde des Server Actions — Étant donné chaque action et chaque profil", () => {
-  for (const name of Object.keys(POLICIES) as ActionName[]) {
-    it.each(PROFILE_NAMES)(`Quand %s appelle ${name}, alors la garde suit allowed(POLICIES[name])`, async (profile) => {
-      setSession(PROFILES[profile].session);
-      const expectedOk = allowed(POLICIES[name], PROFILES[profile].actor);
-      // Entrée vide : un appel autorisé s'arrête à Zod (ou lit les données), un refusé n'atteint rien.
-      const res = await (actions[name] as Fn)({});
-      if (expectedOk) {
-        expect(res.error === "AUTH_REQUIRED" || res.error === "FORBIDDEN").toBe(false);
-      } else {
-        const code = PROFILES[profile].actor.user ? "FORBIDDEN" : "AUTH_REQUIRED";
-        expect(res).toEqual({ ok: false, error: code });
-        expect(prismaCalls()).toBe(0);
-        expect(loaderCalls()).toBe(0);
-      }
-    });
+  for (const flag of ["true", "false"] as const) {
+    for (const name of Object.keys(POLICIES) as ActionName[]) {
+      it.each(PROFILE_NAMES)(`Quand %s appelle ${name} (ACCESS_ENFORCE_FLOOR=${flag}), alors la garde suit allowed`, async (profile) => {
+        vi.stubEnv("ACCESS_ENFORCE_FLOOR", flag);
+        vi.spyOn(console, "warn").mockImplementation(() => {});
+        setSession(PROFILES[profile].session);
+        const actor = PROFILES[profile].actor;
+        const expectedOk = allowed(POLICIES[name], actor, flag === "true");
+        // Entrée vide : un appel autorisé s'arrête à Zod (ou lit les données), un refusé n'atteint rien.
+        const res = await (actions[name] as Fn)({});
+        if (expectedOk) {
+          expect(res.error === "AUTH_REQUIRED" || res.error === "FORBIDDEN").toBe(false);
+        } else {
+          // Le banni a une session : FORBIDDEN (#5).
+          const code = actor.user || actor.banned ? "FORBIDDEN" : "AUTH_REQUIRED";
+          expect(res).toEqual({ ok: false, error: code });
+          expect(prismaCalls()).toBe(0);
+          expect(loaderCalls()).toBe(0);
+        }
+      });
+    }
   }
 
   it("(régression : faille du 2026-10-16) Quand un anonyme appelle saveSettingsAction avec une entrée valide, alors aucun deleteMany", async () => {

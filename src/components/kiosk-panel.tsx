@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useApp } from "./app-context";
+import { LoginGate } from "./login-gate";
+import { signOut } from "@/lib/auth-client";
 import {
   pairKioskAction, revokeKioskAction, renameKioskAction, listKiosksAction, type ActionResult,
 } from "@/app/actions";
@@ -107,6 +109,43 @@ function PairConfirmDialog({ open, onClose, onConfirm }: { open: boolean; onClos
   );
 }
 
+/**
+ * Page sans identité (#5) : ni écran appairé, ni compte autorisé à lire. Aucune donnée n'est
+ * chargée ; l'état de l'écran (non enregistré ou révoqué) et la connexion.
+ */
+export function UnregisteredGate({ screen, signedIn = false }: { screen: ScreenState; signedIn?: boolean }) {
+  return (
+    <main className="mx-auto w-full max-w-xl px-[18px] pb-24 pt-[22px]">
+      <Card>
+        <CardHeader><ScreenStatus screen={screen} /></CardHeader>
+        {signedIn && <CardContent><GateSignOut /></CardContent>}
+      </Card>
+      <LoginGate />
+    </main>
+  );
+}
+
+/** Compte connecté mais refusé (banni, rôle inconnu) : se déconnecter pour changer de compte. */
+function GateSignOut() {
+  const { t } = useApp();
+  const router = useRouter();
+  const out = async () => {
+    await signOut();
+    router.refresh();
+  };
+  return <Button variant="outline" size="lg" className="h-12 w-full" onClick={out}>{t.gateSignOut}</Button>;
+}
+
+/** Bandeau Admin (#5) tant que la garde de l'atelier est inactive (drapeau serveur éteint). */
+export function FloorGuardBanner() {
+  const { t } = useApp();
+  return (
+    <Card role="status" className="border-amber">
+      <CardContent className="text-sm font-bold text-amber">{t.floorGuardOff}</CardContent>
+    </Card>
+  );
+}
+
 /* ===================== Bureau : « Écrans d'atelier » ===================== */
 
 /** Liste chargée au montage ; `apply` la remplace par celle que rend une action. */
@@ -133,7 +172,7 @@ function useKiosks() {
 
 /** Onglet Bureau « Écrans d'atelier » (#4, admin) : liste, renommer, retirer l'accès. */
 export function KioskList() {
-  const { t, run } = useApp();
+  const { t, run, floorGuardOff } = useApp();
   const { kiosks, loadError, apply } = useKiosks();
   const [revoking, setRevoking] = useState<KioskDTO | null>(null);
   const [renaming, setRenaming] = useState<KioskDTO | null>(null);
@@ -148,7 +187,8 @@ export function KioskList() {
   return (
     <Card>
       <CardHeader><CardTitle>{t.tabStations}</CardTitle></CardHeader>
-      <CardContent>
+      <CardContent className="flex flex-col gap-3">
+        {floorGuardOff && <FloorGuardBanner />}
         {loadError && <p className="text-sm text-fail">{loadError}</p>}
         {kiosks && <KioskTable kiosks={kiosks} onRename={setRenaming} onRevoke={setRevoking} />}
       </CardContent>

@@ -9,7 +9,9 @@ vi.mock("@/app/actions", () => ({
   listKiosksAction: vi.fn(),
 }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh }) }));
+vi.mock("@/lib/auth-client", () => ({ signOut: vi.fn(async () => ({})) }));
 vi.mock("./app-context", () => ({ useApp: vi.fn() }));
+vi.mock("./login-gate", () => ({ LoginGate: () => <div>vue-connexion</div> }));
 
 const refresh = vi.fn();
 /** Testing Library compare le texte du DOM normalisé (insécables → espaces) au texte cherché tel quel. */
@@ -17,13 +19,14 @@ const nb = (s: string) => s.replace(/\u00a0/g, " ");
 
 import { pairKioskAction, revokeKioskAction, renameKioskAction, listKiosksAction } from "@/app/actions";
 import { useApp } from "./app-context";
-import { ThisScreen, KioskList } from "./kiosk-panel";
+import { signOut } from "@/lib/auth-client";
+import { ThisScreen, KioskList, FloorGuardBanner, UnregisteredGate } from "./kiosk-panel";
 import { I } from "@/lib/i18n";
 
 const run = vi.fn(async (p: Promise<unknown>) => p);
 const setUi = vi.fn();
-const ctx = (role: string | null, lang: "fr" | "en" = "fr") => ({
-  t: I[lang], lang, run, setUi, pending: false,
+const ctx = (role: string | null, lang: "fr" | "en" = "fr", floorGuardOff = false) => ({
+  t: I[lang], lang, run, setUi, pending: false, floorGuardOff,
   user: role ? { id: "u", name: "Ada", email: "a@test.invalid", role } : null,
 }) as unknown as ReturnType<typeof useApp>;
 
@@ -171,5 +174,52 @@ describe("KioskList — onglet Bureau « Écrans d'atelier » (#4)", () => {
     await waitFor(() => expect(screen.queryByLabelText(I.fr.stationLabel)).toBeNull());
     expect(revokeKioskAction).not.toHaveBeenCalled();
     expect(renameKioskAction).not.toHaveBeenCalled();
+  });
+});
+
+describe("garde de l'atelier (#5)", () => {
+  it.each(["fr", "en"] as const)("Quand le bandeau s'affiche (%s), alors le texte floorGuardOff", (lang) => {
+    vi.mocked(useApp).mockReturnValue(ctx("admin", lang));
+    render(<FloorGuardBanner />);
+    // textContent garde l'insécable : comparaison au texte brut.
+    expect(screen.getByRole("status").textContent).toBe(I[lang].floorGuardOff);
+  });
+
+  it.each([[true, true], [false, false]])("Quand floorGuardOff vaut %s, alors bandeau dans l'onglet Écrans : %s", async (off, visible) => {
+    vi.mocked(listKiosksAction).mockResolvedValue({ ok: true, kiosks: [] });
+    vi.mocked(useApp).mockReturnValue(ctx("admin", "fr", off));
+    render(<KioskList />);
+    await waitFor(() => expect(listKiosksAction).toHaveBeenCalled());
+    expect(screen.queryByRole("status") !== null).toBe(visible);
+  });
+
+  it.each(["fr", "en"] as const)("Quand une page sans identité s'affiche (%s), alors « Écran non enregistré » et la connexion, sans bouton qui mène ailleurs", (lang) => {
+    vi.mocked(useApp).mockReturnValue(ctx(null, lang));
+    render(<UnregisteredGate screen={{ status: "none" }} />);
+    expect(screen.getByText(I[lang].stationUnpairedTitle)).toBeTruthy();
+    expect(screen.getByText("vue-connexion")).toBeTruthy();
+    expect(screen.queryByText(I[lang].stationUnpairedLogin)).toBeNull();
+  });
+
+  it("Quand l'écran est révoqué, alors la porte affiche l'écran révoqué et la connexion", () => {
+    vi.mocked(useApp).mockReturnValue(ctx(null));
+    render(<UnregisteredGate screen={{ status: "revoked" }} />);
+    expect(screen.getByText(I.fr.errors.KIOSK_REVOKED)).toBeTruthy();
+    expect(screen.getByText("vue-connexion")).toBeTruthy();
+  });
+});
+
+describe("porte — compte connecté mais refusé (#5)", () => {
+  it.each(["fr", "en"] as const)("Quand un compte est connecté mais refusé (%s), alors « Se déconnecter » déconnecte et recharge", async (lang) => {
+    vi.mocked(useApp).mockReturnValue(ctx(null, lang));
+    render(<UnregisteredGate screen={{ status: "none" }} signedIn />);
+    fireEvent.click(screen.getByText(I[lang].gateSignOut));
+    await waitFor(() => expect(refresh).toHaveBeenCalled());
+    expect(signOut).toHaveBeenCalled();
+  });
+  it("Quand personne n'est connecté, alors pas de bouton de déconnexion", () => {
+    vi.mocked(useApp).mockReturnValue(ctx(null));
+    render(<UnregisteredGate screen={{ status: "none" }} signedIn={false} />);
+    expect(screen.queryByText(I.fr.gateSignOut)).toBeNull();
   });
 });

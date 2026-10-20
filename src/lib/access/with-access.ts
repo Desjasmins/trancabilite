@@ -4,6 +4,7 @@ import { POLICIES, type ActionName } from "@/app/actions/policies";
 import type { ActionResult } from "@/app/actions/_shared";
 import { allowed, refusal, type Actor } from "./policy";
 import { getActor } from "./actor";
+import { floorEnforced } from "./flag";
 import type { ErrorCode } from "./errors";
 
 type Handler = (input: unknown, actor: Actor) => Promise<ActionResult>;
@@ -20,7 +21,7 @@ export function withAccess(name: ActionName, handler: Handler) {
     if (!policy) return refuse("FORBIDDEN");
     try {
       const actor = await getActor({ mode: "action" });
-      if (!allowed(policy, actor)) return refuse(refusal(policy, actor));
+      if (!allowed(policy, actor, floorEnforced())) return refuse(refusal(policy, actor));
       return await handler(input, actor);
     } catch (e) {
       // Le détail (connexion, SQL…) reste au journal serveur ; le client reçoit un code (D9).
