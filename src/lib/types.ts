@@ -40,9 +40,13 @@ export interface UnitDTO {
     diel: TestResult;
     pol: TestResult;
     eff: TestResult;
+    /** Contrôle visuel (#21) ; null pour un essai antérieur à son introduction. */
+    visual: TestResult;
   };
   verification: { par: string | null; date: string | null; ecran: string | null };
   nc: string;
+  /** Renvoi au Montage en attente (#21) : dérivé du journal (`pendingRework`), seule source du badge « Reprise ». */
+  reprise: { note: string; at: string } | null;
 
   // Cache d'état (dérivé du journal d'événements)
   currentOperationKey: string | null; // prochaine opération attendue ; null = prêt à emballer

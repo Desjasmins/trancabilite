@@ -16,7 +16,7 @@ describe("loadUnits — Étant donné le journal et la table des écrans (#4)", 
       id: "U1", serie: "001", projet: "P", reference: "R", po: null, dessin: null, sub: null, batchId: null,
       deliveryId: null, dateCreation: new Date("2026-10-01T00:00:00Z"), etiquettePar: null, etiquetteDate: null,
       etiquetteImprimee: false, nc: null, currentOperationKey: "test", blocked: false, version: 1,
-      events: [{ operationKey: "montage", operator: "Ana", stationId: "k1", data: null, createdAt: new Date("2026-10-02T00:00:00Z") }],
+      events: [{ operationKey: "montage", result: "done", operator: "Ana", stationId: "k1", data: null, createdAt: new Date("2026-10-02T00:00:00Z") }],
     }]);
     db.kiosk.findMany.mockResolvedValue([{ id: "k1", label: "Établi 2" }]);
     const [u] = await loadUnits();
