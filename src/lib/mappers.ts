@@ -1,4 +1,5 @@
 import type { Unit, Batch, Delivery, TraceEvent, Operation, Route, RouteStep, Kiosk } from "@/generated/prisma/client";
+import { compareEvents } from "./process";
 import type { UnitDTO, BatchDTO, DeliveryDTO, TestResult, OperationDTO, RouteDTO, KioskDTO } from "./types";
 
 const iso = (d: Date | null | undefined) => (d ? d.toISOString() : null);
@@ -7,15 +8,9 @@ const tr = (v: unknown): TestResult =>
 
 type UnitWithEvents = Unit & { events: TraceEvent[] };
 
-/** Dernier événement d'une opération donnée (le journal est append-only). */
-function lastEvent(events: TraceEvent[], key: string): TraceEvent | undefined {
-  let found: TraceEvent | undefined;
-  for (const e of events) {
-    if (e.operationKey === key) {
-      if (!found || e.createdAt > found.createdAt) found = e;
-    }
-  }
-  return found;
+/** Dernier événement d'une opération donnée, selon l'ordre total `compareEvents` (#19). */
+function lastEvent(sorted: readonly TraceEvent[], key: string): TraceEvent | undefined {
+  return sorted.findLast((e) => e.operationKey === key);
 }
 
 /**
@@ -23,7 +18,7 @@ function lastEvent(events: TraceEvent[], key: string): TraceEvent | undefined {
  * courant) donne l'écran de chaque étape (#4) ; un id absent → null (écran non identifié).
  */
 export function toUnitDTO(u: UnitWithEvents, kioskLabels: ReadonlyMap<string, string> = new Map()): UnitDTO {
-  const events = u.events ?? [];
+  const events = [...(u.events ?? [])].sort(compareEvents);
   const montage = lastEvent(events, "montage");
   const test = lastEvent(events, "test");
   const verification = lastEvent(events, "verification");

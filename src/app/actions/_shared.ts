@@ -4,6 +4,7 @@ import "server-only";
 // directive, chaque export (dont recordOperation) deviendrait un point d'entrée
 // appelable depuis le client (doc Next 16, 01-directives/use-server.md).
 import { prisma } from "@/lib/db";
+import type { Prisma } from "@/generated/prisma/client";
 import { EventResult } from "@/generated/prisma/client";
 import { nextOp } from "@/lib/process";
 import type { ZodError } from "zod";
@@ -52,6 +53,23 @@ export function errorText(e: unknown): string {
   if (e instanceof BusinessError) return e.message;
   console.error("[action]", e);
   return "GENERIC";
+}
+
+/**
+ * Heure lue côté base DANS la transaction (#19) : `clock_timestamp()` avance pendant la
+ * transaction, contrairement à `now()` (heure de son début). Jamais l'horloge de Node :
+ * aucune heure valide → l'erreur remonte et la transaction est annulée.
+ */
+export async function dbNow(tx: Pick<Prisma.TransactionClient, "$queryRaw">): Promise<Date> {
+  const rows = await tx.$queryRaw<{ t: Date | string }[]>`SELECT clock_timestamp() AS t`;
+  const t = rows[0] ? new Date(rows[0].t) : null;
+  if (!t || Number.isNaN(t.getTime())) throw new Error(`clock_timestamp() n'a rendu aucune heure valide : ${String(rows[0]?.t)}`);
+  return t;
+}
+
+/** Horodatage du couple renvoi (#19, utilisé par T2) : `fail` à t, `rework` à t + 1 ms. */
+export function pairTimestamps(t: Date): { failAt: Date; reworkAt: Date } {
+  return { failAt: new Date(t.getTime()), reworkAt: new Date(t.getTime() + 1) };
 }
 
 /**
