@@ -59,7 +59,7 @@ export function LabelEditor() {
     test: { par: null, date: null, diel: null, pol: null, eff: null, visual: null, ecran: null },
     verification: { par: null, date: null, ecran: null },
     nc: "",
-    reprise: null,
+    reprise: null, reprises: 0,
     currentOperationKey: "montage",
     blocked: false,
     version: 0,

@@ -49,7 +49,7 @@ function unitAt(key: string, over: Record<string, unknown> = {}) {
     montage: { par: "Max", date: null, ecran: null },
     test: { par: null, date: null, ecran: null, diel: null, pol: null, eff: null, visual: null },
     verification: { par: null, date: null, ecran: null },
-    nc: "", reprise: null, currentOperationKey: key, blocked: false, version: 1, ...over,
+    nc: "", reprise: null, reprises: 0, currentOperationKey: key, blocked: false, version: 1, ...over,
   };
 }
 function mount(station: string, units: unknown[], ui: Record<string, unknown> = {}) {

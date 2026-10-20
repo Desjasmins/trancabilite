@@ -6,6 +6,10 @@ const iso = (d: Date | null | undefined) => (d ? d.toISOString() : null);
 const tr = (v: unknown): TestResult =>
   v === "accept" || v === "refus" ? v : null;
 
+/** Un renvoi vers une étape antérieure (#21) porte `data.to` ; un retest hérité (`rework` sans cible) n'en est pas un. */
+const isSendBack = (e: TraceEvent) =>
+  e.result === "rework" && typeof (e.data as { to?: unknown } | null)?.to === "string" && (e.data as { to: string }).to !== "";
+
 type UnitWithEvents = Unit & { events: TraceEvent[] };
 
 /**
@@ -58,6 +62,7 @@ export function toUnitDTO(u: UnitWithEvents, kioskLabels: ReadonlyMap<string, st
     verification: { par: verification?.operator ?? null, date: iso(verification?.createdAt), ecran: ecran(verification) },
     nc: u.nc ?? "",
     reprise: reprise ? { note: reprise.note, at: reprise.at.toISOString() } : null,
+    reprises: events.filter(isSendBack).length,
     currentOperationKey: u.currentOperationKey ?? null,
     blocked: u.blocked,
     version: u.version,

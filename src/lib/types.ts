@@ -47,6 +47,8 @@ export interface UnitDTO {
   nc: string;
   /** Renvoi au Montage en attente (#21) : dérivé du journal (`pendingRework`), seule source du badge « Reprise ». */
   reprise: { note: string; at: string } | null;
+  /** Nombre de renvois (#22) : événements `rework` portant `data.to` ; les retests hérités ne comptent pas. Sans limite. */
+  reprises: number;
 
   // Cache d'état (dérivé du journal d'événements)
   currentOperationKey: string | null; // prochaine opération attendue ; null = prêt à emballer

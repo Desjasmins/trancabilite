@@ -102,3 +102,36 @@ describe("Bureau, fiche d'unité — Étant donné l'écran écrit au journal (#
     expect(screen.getByText("liste-des-ecrans")).toBeTruthy();
   });
 });
+
+describe("Bureau, registre — Étant donné le contrôle visuel et les reprises (#22)", () => {
+  const ctx = (units: unknown[], openId: string | null, lang: "fr" | "en" = "fr") => ({
+    units, batches: [], deliveries: [], operations: [], routes: [],
+    settings: { sub: "", proj: "", ops: [] }, template: defaultTemplate(),
+    ui: { bureauTab: "reg", query: "", filterStatus: "", openId, client: false },
+    setUi: vi.fn(), run: vi.fn(), t: I[lang], lang, pending: false, user: null,
+  }) as unknown as ReturnType<typeof useApp>;
+  const ok = { ...blocked, blocked: false, nc: "", currentOperationKey: "verification", reprises: 2,
+    test: { par: "Léo", date: null, diel: "accept", pol: "accept", eff: "accept", visual: "refus" } };
+  const old = { ...ok, id: "U2", serie: "002", reprises: 0, test: { ...ok.test, visual: null } };
+
+  it("Quand le registre s'affiche, alors une colonne Contrôle visuel : pastille si essai, « — » si ancien événement", () => {
+    vi.mocked(useApp).mockReturnValue(ctx([ok, old], null));
+    const { container } = render(<LangProvider><Bureau /></LangProvider>);
+    const heads = [...container.querySelectorAll("thead th")].map((th) => th.textContent);
+    const col = heads.indexOf(I.fr.visual);
+    expect(col).toBeGreaterThan(-1);
+    const cells = [...container.querySelectorAll("tbody tr")].map((tr) => tr.querySelectorAll("td")[col]);
+    expect(cells[0].querySelector(".tcdot-r")).toBeTruthy();
+    expect(cells[1].textContent).toBe("—");
+  });
+
+  it("Quand on ouvre la fiche, alors « 2 reprise(s) » ; en anglais « 2 rework(s) »", () => {
+    vi.mocked(useApp).mockReturnValue(ctx([ok], "U1"));
+    render(<LangProvider><Bureau /></LangProvider>);
+    expect(screen.getByText("2 reprise(s)")).toBeTruthy();
+    cleanup();
+    vi.mocked(useApp).mockReturnValue(ctx([ok], "U1", "en"));
+    render(<LangProvider><Bureau /></LangProvider>);
+    expect(screen.getByText("2 rework(s)")).toBeTruthy();
+  });
+});
