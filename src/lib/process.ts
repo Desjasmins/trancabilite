@@ -1,3 +1,5 @@
+import type { EventResult } from "@/generated/prisma/client";
+
 // Helpers de gamme de fabrication (routage par donnée).
 // Une gamme = liste ordonnée de clés d'opérations, ex. ["montage","test","verification"].
 
@@ -31,8 +33,9 @@ export interface JournalEvent {
  * Rang de départage à `createdAt` égal : un renvoi écrit `fail` puis `rework` dans la
  * même transaction (TDD Rév. 3 §B1). Tout autre résultat (`pass`, `done`) vient après.
  */
-const RANK: Readonly<Record<string, number>> = { fail: 0, rework: 1 };
-const rank = (result: string) => RANK[result] ?? 2;
+// Exhaustif sur l'enum : un nouveau résultat ne compile pas tant qu'il n'est pas classé (revue #19).
+const RANK: Readonly<Record<EventResult, number>> = { fail: 0, rework: 1, pass: 2, done: 2 };
+const rank = (result: string) => RANK[result as EventResult] ?? 2;
 
 /** Ordre de lecture SQL du journal ; l'ordre total reste `compareEvents` côté application. */
 export const EVENT_ORDER = [{ createdAt: "asc" as const }, { id: "asc" as const }];

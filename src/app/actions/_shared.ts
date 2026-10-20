@@ -63,7 +63,7 @@ export function errorText(e: unknown): string {
 export async function dbNow(tx: Pick<Prisma.TransactionClient, "$queryRaw">): Promise<Date> {
   const rows = await tx.$queryRaw<{ t: Date | string }[]>`SELECT clock_timestamp() AS t`;
   const t = rows[0] ? new Date(rows[0].t) : null;
-  if (!t || Number.isNaN(t.getTime())) throw new Error("clock_timestamp() n'a rendu aucune heure valide");
+  if (!t || Number.isNaN(t.getTime())) throw new Error(`clock_timestamp() n'a rendu aucune heure valide : ${String(rows[0]?.t)}`);
   return t;
 }
 
