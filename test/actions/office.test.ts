@@ -26,20 +26,21 @@ describe("livraisons — figé (#2)", () => {
     expect(await createDeliveryAction({ id: "" })).toEqual({ ok: false, error: "ID requis" });
   });
   it("Quand la livraison n'existe pas, alors elle est créée ouverte", async () => {
-    db.delivery.findUnique.mockResolvedValue(null);
     expect(await createDeliveryAction({ id: "L1", client: "" })).toEqual({ ok: true, deliveries: DELIVERIES });
-    expect(db.delivery.findUnique).toHaveBeenCalledWith({ where: { id: "L1" } });
     expect(db.delivery.create).toHaveBeenCalledWith({ data: { id: "L1", client: null, closed: false } });
   });
-  it("Quand elle existe, alors rien n'est créé", async () => {
-    db.delivery.findUnique.mockResolvedValue({ id: "L1" });
+  it("Quand elle existe (P2002), alors l'action réussit sans rien modifier (#9)", async () => {
+    db.delivery.create.mockRejectedValue(Object.assign(new Error("Unique constraint failed"), { code: "P2002" }));
     expect(await createDeliveryAction({ id: "L1", client: "C" })).toEqual({ ok: true, deliveries: DELIVERIES });
-    expect(db.delivery.create).not.toHaveBeenCalled();
+    expect(db.delivery.update).not.toHaveBeenCalled();
+    expect(db.delivery.updateMany).not.toHaveBeenCalled();
+    expect(db.delivery.upsert).not.toHaveBeenCalled();
   });
   it("Quand on ferme, alors closed=true ; entrée invalide → échec", async () => {
     expect((await closeDeliveryAction({ id: "" })).ok).toBe(false);
+    db.delivery.updateMany.mockResolvedValue({ count: 1 });
     expect(await closeDeliveryAction({ id: "L1" })).toEqual({ ok: true, deliveries: DELIVERIES });
-    expect(db.delivery.update).toHaveBeenCalledWith({ where: { id: "L1" }, data: { closed: true } });
+    expect(db.delivery.updateMany).toHaveBeenCalledWith({ where: { id: "L1" }, data: { closed: true } });
   });
 });
 

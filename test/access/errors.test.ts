@@ -21,6 +21,14 @@ describe("errorMessage — Étant donné le code renvoyé par une Server Action"
     expect(t.errors.SERIAL_TAKEN).toContain("S.N.");
     expect(t.errors.SERIAL_TAKEN).not.toMatch(/ [:;?!»]|« /);
   });
+
+  it.each(["fr", "en"] as const)("Quand le code est un refus d'emballage (#8) (%s), alors le texte traduit", (lang) => {
+    const t = I[lang];
+    for (const k of ["UNIT_ALREADY_PACKED", "UNIT_PACK_CONFLICT"] as const) {
+      expect(t.errors[k]).toBeTruthy();
+      expect(errorMessage(k, t)).toBe(t.errors[k]);
+    }
+  });
   it("Quand on lit les textes d'écran en français, alors insécables avant « : », « ? » et dans les guillemets", () => {
     expect(I.fr.stationPairedAs).toBe("Écran enregistré\u00a0:");
     expect(I.fr.stationRevokeConfirm).toBe("Retirer l'accès de «\u00a0{label}\u00a0»\u00a0? L'écran ne pourra plus rien valider.");
