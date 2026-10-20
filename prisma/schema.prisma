@@ -156,7 +156,10 @@ model Unit {
 
   events TraceEvent[]
 
-  @@index([projet, reference])
+  // Un S.N. est unique par (projet, référence) : dernier rempart contre les doublons
+  // (#7). L'index unique couvre aussi les recherches par (projet, référence), d'où
+  // le retrait de l'ancien @@index([projet, reference]).
+  @@unique([projet, reference, serie])
   @@index([batchId])
   @@index([deliveryId])
   @@index([currentOperationKey])
@@ -173,14 +176,28 @@ model TraceEvent {
   operationKey String
   result       EventResult
   operator     String?
-  stationId    String? // identité du poste (mode kiosque, cf. auth) — null pour l'instant
+  stationId    String? // Kiosk.id de l'écran d'atelier (#4) ; null = écran non identifié (historique compris)
   data         Json? // résultats QC : { diel, pol, eff }
   note         String? // non-conformité
   createdAt    DateTime    @default(now())
 
   @@index([unitId])
   @@index([operationKey])
+  @@index([stationId])
   @@map("trace_events")
+}
+
+/// Écran d'atelier appairé (#4). Jamais supprimé, seulement révoqué.
+model Kiosk {
+  id          String    @id @default(cuid())
+  label       String
+  tokenHash   String    @unique // SHA-256 hex du jeton du cookie ; le jeton n'est jamais stocké
+  createdById String // User.id de l'admin qui a appairé (sans relation : User appartient à Better Auth)
+  createdAt   DateTime  @default(now())
+  lastSeenAt  DateTime?
+  revokedAt   DateTime?
+
+  @@map("kiosks")
 }
 
 /// Valeurs par défaut globales (singleton, id = 1).

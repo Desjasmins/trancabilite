@@ -1,5 +1,5 @@
-import type { Unit, Batch, Delivery, TraceEvent, Operation, Route, RouteStep } from "@/generated/prisma/client";
-import type { UnitDTO, BatchDTO, DeliveryDTO, TestResult, OperationDTO, RouteDTO } from "./types";
+import type { Unit, Batch, Delivery, TraceEvent, Operation, Route, RouteStep, Kiosk } from "@/generated/prisma/client";
+import type { UnitDTO, BatchDTO, DeliveryDTO, TestResult, OperationDTO, RouteDTO, KioskDTO } from "./types";
 
 const iso = (d: Date | null | undefined) => (d ? d.toISOString() : null);
 const tr = (v: unknown): TestResult =>
@@ -18,12 +18,16 @@ function lastEvent(events: TraceEvent[], key: string): TraceEvent | undefined {
   return found;
 }
 
-/** Reconstruit le DTO (forme historique) en repliant les événements. */
-export function toUnitDTO(u: UnitWithEvents): UnitDTO {
+/**
+ * Reconstruit le DTO (forme historique) en repliant les événements. `kioskLabels` (id → libellé
+ * courant) donne l'écran de chaque étape (#4) ; un id absent → null (écran non identifié).
+ */
+export function toUnitDTO(u: UnitWithEvents, kioskLabels: ReadonlyMap<string, string> = new Map()): UnitDTO {
   const events = u.events ?? [];
   const montage = lastEvent(events, "montage");
   const test = lastEvent(events, "test");
   const verification = lastEvent(events, "verification");
+  const ecran = (e: TraceEvent | undefined) => (e?.stationId && kioskLabels.get(e.stationId)) || null;
   const testData = (test?.data as { diel?: unknown; pol?: unknown; eff?: unknown } | null) ?? {};
 
   return {
@@ -42,15 +46,16 @@ export function toUnitDTO(u: UnitWithEvents): UnitDTO {
       date: iso(u.etiquetteDate),
       imprimee: u.etiquetteImprimee,
     },
-    montage: { par: montage?.operator ?? null, date: iso(montage?.createdAt) },
+    montage: { par: montage?.operator ?? null, date: iso(montage?.createdAt), ecran: ecran(montage) },
     test: {
       par: test?.operator ?? null,
       date: iso(test?.createdAt),
+      ecran: ecran(test),
       diel: tr(testData.diel),
       pol: tr(testData.pol),
       eff: tr(testData.eff),
     },
-    verification: { par: verification?.operator ?? null, date: iso(verification?.createdAt) },
+    verification: { par: verification?.operator ?? null, date: iso(verification?.createdAt), ecran: ecran(verification) },
     nc: u.nc ?? "",
     currentOperationKey: u.currentOperationKey ?? null,
     blocked: u.blocked,
@@ -90,5 +95,15 @@ export function toRouteDTO(r: Route & { steps: RouteStep[] }): RouteDTO {
     name: r.name,
     isDefault: r.isDefault,
     steps: [...r.steps].sort((a, b) => a.position - b.position).map((s) => s.operationKey),
+  };
+}
+
+export function toKioskDTO(k: Kiosk): KioskDTO {
+  return {
+    id: k.id,
+    label: k.label,
+    createdAt: k.createdAt.toISOString(),
+    lastSeenAt: iso(k.lastSeenAt),
+    revokedAt: iso(k.revokedAt),
   };
 }

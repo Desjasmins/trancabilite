@@ -4,6 +4,8 @@ import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { useApp } from "./app-context";
 import { LabelView } from "./label-view";
+import { KioskList } from "./kiosk-panel";
+import { RelayCell, fmt } from "./relay-cell";
 import { LabelEditor } from "./label-editor";
 import { StatusChip, TestDot, SectionHeader, EmptyState } from "./ui-bits";
 import { Field, inputCls } from "./atelier";
@@ -13,8 +15,9 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import { saveSettingsAction, markPrintedAction, createBatchAction, updateBatchAction, retestUnitAction } from "@/app/actions";
+import { saveSettingsAction, markPrintedAction, createBatchAction, updateBatchAction, retestUnitOfficeAction } from "@/app/actions";
 import { statut, byId } from "@/lib/status";
+import { reportFailure } from "@/lib/access/errors";
 import { modele } from "@/lib/label";
 import { printLabels, printSlip } from "@/lib/print";
 import { exportRegistryXlsx } from "@/lib/export";
@@ -43,6 +46,8 @@ export function Bureau() {
       return <LabelEditor />;
     case "set":
       return <ViewSet />;
+    case "kiosks":
+      return <KioskList />;
   }
 }
 
@@ -182,7 +187,7 @@ function Td({
 }
 
 function DetailPanel() {
-  const { units, ui, setUi, template, run, user, t, pending } = useApp();
+  const { units, ui, setUi, template, run, t, pending } = useApp();
   const u = ui.openId ? byId(units, ui.openId) : null;
   const open = !!u;
   const s = u ? statut(u) : "montage";
@@ -192,11 +197,8 @@ function DetailPanel() {
   const retest = async () => {
     if (!u) return;
     const res = await run(
-      retestUnitAction({
-        unitId: u.id,
-        operator: user?.name || "Bureau",
-        note: retestRef.current?.value,
-      }),
+      // L'opérateur est le compte connecté, lu côté serveur (#3).
+      retestUnitOfficeAction({ unitId: u.id, note: retestRef.current?.value }),
       t.toastRetest,
     );
     if (res.ok) setUi({ openId: null });
@@ -207,7 +209,7 @@ function DetailPanel() {
     const out = await printLabels([u], template, t);
     if (out.ok) toast.success(out.message);
     else toast.error(out.message);
-    if (out.ok) void markPrintedAction({ unitIds: [u.id] });
+    if (out.ok) void reportFailure(markPrintedAction({ unitIds: [u.id] }), t, (m) => toast.error(m));
   };
 
   return (
@@ -234,12 +236,13 @@ function DetailPanel() {
               </div>
 
               <div className="my-3.5 flex">
-                <RelayCell label={t.stations.montage} who={u.montage.par} date={u.montage.date} />
-                <RelayCell label={t.stations.test} who={u.test.par} date={u.test.date} bad={bad} />
+                <RelayCell label={t.stations.montage} who={u.montage.par} date={u.montage.date} screen={u.montage.ecran} />
+                <RelayCell label={t.stations.test} who={u.test.par} date={u.test.date} screen={u.test.ecran} bad={bad} />
                 <RelayCell
                   label={t.stations.verification}
                   who={u.verification.par}
                   date={u.verification.date}
+                  screen={u.verification.ecran}
                 />
               </div>
 
@@ -288,41 +291,6 @@ function MetaCell({ k, v }: { k: string; v: string }) {
     <div className="rounded-lg border border-line bg-panel px-3 py-2.5">
       <div className="text-[10px] uppercase tracking-wider text-faint">{k}</div>
       <div className="mt-1 font-mono text-[13px]">{v}</div>
-    </div>
-  );
-}
-
-function RelayCell({
-  label,
-  who,
-  date,
-  bad,
-}: {
-  label: string;
-  who: string | null;
-  date: string | null;
-  bad?: boolean;
-}) {
-  const { t } = useApp();
-  return (
-    <div
-      className={cn(
-        "flex-1 border border-r-0 border-line bg-[#1c2024] px-2.5 py-2.5 first:rounded-l-lg last:rounded-r-lg last:border-r",
-        who && !bad && "border-[#1f4634] bg-[#14241c]",
-        who && bad && "border-[#5a2326] bg-[#2a1416]",
-      )}
-    >
-      <div className="text-[10px] uppercase tracking-wider text-faint">{label}</div>
-      <div
-        className={cn(
-          "mt-1 font-mono text-xs text-muted-foreground",
-          who && !bad && "text-pass",
-          who && bad && "text-fail",
-        )}
-      >
-        {who || t.none}
-      </div>
-      {date && <div className="mt-0.5 font-mono text-[10px] text-faint">{fmt(date, t.none)}</div>}
     </div>
   );
 }
@@ -397,7 +365,7 @@ function ViewLots() {
                 <input ref={qtyRef} type="number" min={1} defaultValue={3} className={inputCls + " w-[90px]"} />
               </Field>
               <Field label={t.startSerial}>
-                <input ref={startRef} type="number" placeholder="auto" className={inputCls + " w-[110px]"} />
+                <input ref={startRef} type="number" placeholder={t.startSerialAuto} className={inputCls + " w-[110px]"} />
               </Field>
               <Field label={t.route}>
                 <select
@@ -773,17 +741,4 @@ function Stat({ n, l, rej }: { n: number; l: string; rej?: boolean }) {
       <div className="mt-0.5 text-xs text-muted-foreground">{l}</div>
     </div>
   );
-}
-
-/* ===================== util ===================== */
-function fmt(iso: string | null, none: string) {
-  if (!iso) return none;
-  const d = new Date(iso);
-  return d.toLocaleString("fr-CA", {
-    year: "2-digit",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
 }

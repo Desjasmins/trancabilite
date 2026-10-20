@@ -1,10 +1,12 @@
 "use client";
 
-import { createContext, useContext, useState, useCallback, useEffect } from "react";
+import { createContext, useContext, useState, useCallback } from "react";
 import { toast } from "sonner";
 import { useLang } from "./lang-provider";
-import { getLiveDataAction, type ActionResult } from "@/app/actions";
-import { subscribeSync, notifyChange, realtimeEnabled } from "@/lib/realtime";
+import { errorMessage } from "@/lib/access/errors";
+import type { ActionResult } from "@/app/actions";
+import { notifyChange } from "@/lib/realtime";
+import { useLiveSync } from "./use-live-sync";
 import type {
   Snapshot,
   UnitDTO,
@@ -31,12 +33,14 @@ export interface PendingTest {
 export interface UiState {
   mode: "atelier" | "bureau";
   station: StationKey | null;
+  /** Onglet Atelier « Cet écran » (#4). */
+  screen: boolean;
   op: Partial<Record<string, string>>;
   scanUnit: string | null;
   verifArm: boolean;
   pendingTest: PendingTest;
   client: boolean;
-  bureauTab: "reg" | "lots" | "rep" | "label" | "set";
+  bureauTab: "reg" | "lots" | "rep" | "label" | "set" | "kiosks";
   query: string;
   filterStatus: StatusKey | "";
   activeDelivery: string;
@@ -48,6 +52,7 @@ export interface UiState {
 const initialUi: UiState = {
   mode: "atelier",
   station: null,
+  screen: false,
   op: {},
   scanUnit: null,
   verifArm: false,
@@ -80,6 +85,8 @@ interface AppCtxValue {
   setLang: (l: Lang) => void;
   pending: boolean;
   user: AuthUser | null;
+  /** Garde de l'atelier inactive (#5) : vrai seulement pour un admin, calculé au serveur. */
+  floorGuardOff: boolean;
 }
 
 const Ctx = createContext<AppCtxValue | null>(null);
@@ -87,10 +94,15 @@ const Ctx = createContext<AppCtxValue | null>(null);
 export function AppProvider({
   initial,
   user,
+  live = true,
+  floorGuardOff = false,
   children,
 }: {
   initial: Snapshot;
   user: AuthUser | null;
+  /** false : aucune synchro (porte sans identité, #5). */
+  live?: boolean;
+  floorGuardOff?: boolean;
   children: React.ReactNode;
 }) {
   const { t, lang, setLang } = useLang();
@@ -120,7 +132,8 @@ export function AppProvider({
       try {
         const res = await p;
         if (!res.ok) {
-          toast.error(res.error ?? "Erreur");
+          // Codes (AUTH_REQUIRED, FORBIDDEN, GENERIC) traduits ; message métier tel quel (#3).
+          toast.error(errorMessage(res.error, t));
           return res;
         }
         applyResult(res);
@@ -130,60 +143,18 @@ export function AppProvider({
           else toast.success(successMsg);
         }
         return res;
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : "Erreur réseau";
-        toast.error(msg);
-        return { ok: false, error: msg } as ActionResult;
+      } catch {
+        // L'appel n'a pas abouti (réseau, serveur injoignable) : jamais le message brut.
+        toast.error(t.errors.network);
+        return { ok: false, error: t.errors.network } as ActionResult;
       } finally {
         setPending(false);
       }
     },
-    [applyResult],
+    [applyResult, t],
   );
 
-  // Synchro live : signal temps réel + filets de sécurité pour qu'aucun écran
-  // ne reste périmé sans action de l'utilisateur.
-  useEffect(() => {
-    let debounce: ReturnType<typeof setTimeout> | null = null;
-    const refresh = () => {
-      void getLiveDataAction().then((res) => {
-        if (res.ok) applyResult(res);
-      });
-    };
-    // Groupe les signaux rapprochés (plusieurs actions en rafale -> 1 rechargement).
-    const onSignal = () => {
-      if (debounce) clearTimeout(debounce);
-      debounce = setTimeout(refresh, 200);
-    };
-
-    // 1) Temps réel : un autre écran a changé une donnée.
-    const unsub = subscribeSync(onSignal);
-
-    // 2) Onglet redevenu visible (veille, changement d'onglet) : des signaux
-    //    ont pu être ratés pendant ce temps.
-    const onVisible = () => {
-      if (document.visibilityState === "visible") refresh();
-    };
-    document.addEventListener("visibilitychange", onVisible);
-
-    // 3) Retour du réseau.
-    window.addEventListener("online", refresh);
-
-    // 4) Rafraîchissement périodique de secours (onglet visible seulement) :
-    //    garantit la fraîcheur même si le temps réel est indisponible.
-    const every = realtimeEnabled() ? 60_000 : 20_000;
-    const poll = setInterval(() => {
-      if (document.visibilityState === "visible") refresh();
-    }, every);
-
-    return () => {
-      unsub();
-      document.removeEventListener("visibilitychange", onVisible);
-      window.removeEventListener("online", refresh);
-      clearInterval(poll);
-      if (debounce) clearTimeout(debounce);
-    };
-  }, [applyResult]);
+  useLiveSync(live, applyResult);
 
   return (
     <Ctx.Provider
@@ -205,6 +176,7 @@ export function AppProvider({
         setLang,
         pending,
         user,
+        floorGuardOff,
       }}
     >
       {children}

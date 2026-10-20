@@ -1,11 +1,13 @@
 "use client";
 
+import { useRef } from "react";
 import { toast } from "sonner";
 import { useApp } from "./app-context";
 import { LabelView } from "./label-view";
 import { SectionHeader } from "./ui-bits";
 import { Field, inputCls } from "./atelier";
 import { saveTemplateAction } from "@/app/actions";
+import { errorMessage } from "@/lib/access/errors";
 import {
   LABEL_PRESETS,
   FAM,
@@ -53,18 +55,36 @@ export function LabelEditor() {
     livraison: "",
     dateCreation: new Date().toISOString(),
     etiquette: { par: null, date: null, imprimee: false },
-    montage: { par: null, date: null },
-    test: { par: null, date: null, diel: null, pol: null, eff: null },
-    verification: { par: null, date: null },
+    montage: { par: null, date: null, ecran: null },
+    test: { par: null, date: null, diel: null, pol: null, eff: null, ecran: null },
+    verification: { par: null, date: null, ecran: null },
     nc: "",
     currentOperationKey: "montage",
     blocked: false,
     version: 0,
   };
 
+  // Mise à jour immédiate (champs contrôlés : sinon la saisie perd des caractères), avec
+  // retour arrière si le serveur refuse (D12, approuvé par Gedeon le 2026-10-19).
+  // Course : seul le DERNIER enregistrement en vol peut revenir en arrière, et il revient au
+  // dernier gabarit CONFIRMÉ, pas à l'état d'avant sa propre modification (revue #3).
+  const confirmed = useRef(template);
+  const seq = useRef(0);
   const commit = (next: LabelTemplate) => {
+    const mine = ++seq.current;
     setTemplate(next);
-    void saveTemplateAction(next);
+    const rollback = (message: string) => {
+      if (mine !== seq.current) return; // un enregistrement plus récent décidera
+      setTemplate(confirmed.current);
+      toast.error(message);
+    };
+    void saveTemplateAction(next).then(
+      (res) => {
+        if (res.ok) confirmed.current = next;
+        else rollback(errorMessage(res.error, t));
+      },
+      () => rollback(t.errors.network),
+    );
   };
   const mutate = (fn: (d: LabelTemplate) => void) => {
     const next = clone(template);

@@ -31,6 +31,9 @@ export const retestUnitSchema = z.object({
 });
 export type RetestUnitInput = z.infer<typeof retestUnitSchema>;
 
+/** Remise en essai depuis le Bureau (#3) : pas d'opérateur, il vient de la session. */
+export const retestUnitOfficeSchema = retestUnitSchema.omit({ operator: true });
+
 export const confirmMontageBulkSchema = z.object({
   unitIds: z.array(z.string().min(1)).min(1).max(500),
   operator: z.string().trim().min(1, "Opérateur requis"),
@@ -116,3 +119,11 @@ export const labelTemplateSchema = z.object({
 export const reprintPrintedSchema = z.object({
   unitIds: z.array(z.string().min(1)).max(500),
 });
+
+// ---- Écrans d'atelier (#4) ----
+const kioskLabel = z.string().trim().min(1, "Nom de l'écran requis").max(60);
+const kioskId = z.string().min(1, "Écran requis");
+
+export const pairKioskSchema = z.object({ label: kioskLabel });
+export const revokeKioskSchema = z.object({ id: kioskId });
+export const renameKioskSchema = z.object({ id: kioskId, label: kioskLabel });
