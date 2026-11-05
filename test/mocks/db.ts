@@ -16,6 +16,7 @@ type Model = ReturnType<typeof model>;
 export type PrismaMock = Record<string, Model> & {
   $transaction: Mock<(arg: unknown, opts?: unknown) => Promise<unknown>>;
   $executeRaw: Mock<(...args: unknown[]) => Promise<number>>;
+  $queryRaw: Mock<(...args: unknown[]) => Promise<unknown[]>>;
 };
 
 const models: Record<string, Model> = {};
@@ -34,6 +35,9 @@ export const prisma = { ...models } as PrismaMock;
 // `$transaction` sous ses deux formes Prisma : callback interactif (reçoit le client) OU tableau.
 // Requête brute (verrou consultatif de createBatch, #7) : rend un nombre de lignes.
 prisma.$executeRaw = vi.fn(async () => 0);
+// Heure lue en base (`dbNow`, #19) : instant fixe, pour des horodatages vérifiables (#21).
+export const DB_NOW = new Date("2026-10-20T10:00:00.000Z");
+prisma.$queryRaw = vi.fn(async () => [{ t: DB_NOW }]);
 
 prisma.$transaction = vi.fn(async (arg: unknown): Promise<unknown> => {
   if (typeof arg === "function") return (arg as (tx: PrismaMock) => unknown)(prisma);
@@ -46,4 +50,5 @@ export function resetDbMock() {
   for (const m of Object.values(models)) for (const fn of Object.values(m)) fn.mockReset();
   prisma.$transaction.mockClear();
   prisma.$executeRaw.mockClear();
+  prisma.$queryRaw.mockClear();
 }

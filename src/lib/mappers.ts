@@ -1,4 +1,5 @@
 import type { Unit, Batch, Delivery, TraceEvent, Operation, Route, RouteStep, Kiosk } from "@/generated/prisma/client";
+import { compareEvents, pendingRework } from "./process";
 import type { UnitDTO, BatchDTO, DeliveryDTO, TestResult, OperationDTO, RouteDTO, KioskDTO } from "./types";
 
 const iso = (d: Date | null | undefined) => (d ? d.toISOString() : null);
@@ -7,15 +8,12 @@ const tr = (v: unknown): TestResult =>
 
 type UnitWithEvents = Unit & { events: TraceEvent[] };
 
-/** Dernier événement d'une opération donnée (le journal est append-only). */
-function lastEvent(events: TraceEvent[], key: string): TraceEvent | undefined {
-  let found: TraceEvent | undefined;
-  for (const e of events) {
-    if (e.operationKey === key) {
-      if (!found || e.createdAt > found.createdAt) found = e;
-    }
-  }
-  return found;
+/**
+ * Dernier événement d'une opération donnée, selon l'ordre total `compareEvents` (#19),
+ * limité aux résultats `results` (#21, B2) : un `rework` n'efface jamais l'essai réel.
+ */
+function lastEvent(sorted: readonly TraceEvent[], key: string, results: readonly string[]): TraceEvent | undefined {
+  return sorted.findLast((e) => e.operationKey === key && results.includes(e.result));
 }
 
 /**
@@ -23,12 +21,13 @@ function lastEvent(events: TraceEvent[], key: string): TraceEvent | undefined {
  * courant) donne l'écran de chaque étape (#4) ; un id absent → null (écran non identifié).
  */
 export function toUnitDTO(u: UnitWithEvents, kioskLabels: ReadonlyMap<string, string> = new Map()): UnitDTO {
-  const events = u.events ?? [];
-  const montage = lastEvent(events, "montage");
-  const test = lastEvent(events, "test");
-  const verification = lastEvent(events, "verification");
+  const events = [...(u.events ?? [])].sort(compareEvents);
+  const montage = lastEvent(events, "montage", ["done"]);
+  const test = lastEvent(events, "test", ["pass", "fail"]);
+  const verification = lastEvent(events, "verification", ["done"]);
+  const reprise = pendingRework(events);
   const ecran = (e: TraceEvent | undefined) => (e?.stationId && kioskLabels.get(e.stationId)) || null;
-  const testData = (test?.data as { diel?: unknown; pol?: unknown; eff?: unknown } | null) ?? {};
+  const testData = (test?.data as { diel?: unknown; pol?: unknown; eff?: unknown; visual?: unknown } | null) ?? {};
 
   return {
     id: u.id,
@@ -54,9 +53,11 @@ export function toUnitDTO(u: UnitWithEvents, kioskLabels: ReadonlyMap<string, st
       diel: tr(testData.diel),
       pol: tr(testData.pol),
       eff: tr(testData.eff),
+      visual: tr(testData.visual),
     },
     verification: { par: verification?.operator ?? null, date: iso(verification?.createdAt), ecran: ecran(verification) },
     nc: u.nc ?? "",
+    reprise: reprise ? { note: reprise.note, at: reprise.at.toISOString() } : null,
     currentOperationKey: u.currentOperationKey ?? null,
     blocked: u.blocked,
     version: u.version,

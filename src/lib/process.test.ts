@@ -42,3 +42,108 @@ describe("routeLacksTest — Étant donné une gamme (#20)", () => {
     expect(routeLacksTest([])).toBe(true);
   });
 });
+
+// ── #19 (T1) : ordre total du journal et étape courante dérivée ──────────────
+import { compareEvents, deriveCurrentStep, pendingRework, type JournalEvent } from "./process";
+
+const T0 = new Date("2026-10-20T10:00:00.000Z");
+const at = (ms: number) => new Date(T0.getTime() + ms);
+const e = (id: string, operationKey: string, result: string, ms: number, data: unknown = null): JournalEvent =>
+  ({ id, operationKey, result, createdAt: at(ms), data }) as JournalEvent;
+
+describe("compareEvents — Étant donné des événements écrits dans une même transaction (#19)", () => {
+  it("Quand fail et rework ont le même createdAt et sont donnés à l'envers, alors fail puis rework", () => {
+    const sorted = [e("a", "test", "rework", 0), e("z", "test", "fail", 0)].sort(compareEvents);
+    expect(sorted.map((x) => x.result)).toEqual(["fail", "rework"]);
+  });
+  it("Quand rework et pass/done ont le même createdAt, alors rework avant pass et done", () => {
+    const sorted = [e("a", "t", "pass", 0), e("b", "m", "done", 0), e("c", "t", "rework", 0)].sort(compareEvents);
+    expect(sorted.map((x) => x.result)).toEqual(["rework", "pass", "done"]);
+  });
+  it("Quand le createdAt diffère, alors il prime sur le rang", () => {
+    const sorted = [e("a", "t", "fail", 5), e("b", "t", "pass", 0)].sort(compareEvents);
+    expect(sorted.map((x) => x.id)).toEqual(["b", "a"]);
+  });
+  it("Quand createdAt et rang sont égaux, alors départage par id", () => {
+    expect(compareEvents(e("b", "t", "pass", 0), e("a", "t", "pass", 0))).toBeGreaterThan(0);
+    expect(compareEvents(e("a", "t", "pass", 0), e("b", "t", "pass", 0))).toBeLessThan(0);
+    expect(compareEvents(e("a", "t", "pass", 0), e("a", "t", "pass", 0))).toBe(0);
+  });
+  it("Quand le résultat est inconnu, alors il est classé avec pass/done", () => {
+    const sorted = [e("a", "t", "autre", 0), e("b", "t", "rework", 0)].sort(compareEvents);
+    expect(sorted.map((x) => x.id)).toEqual(["b", "a"]);
+  });
+});
+
+describe("deriveCurrentStep — Étant donné la gamme montage → test → vérification (#19)", () => {
+  const g = ["montage", "test", "verification"];
+  it("Quand le journal est vide, alors la première étape", () => {
+    expect(deriveCurrentStep(g, [])).toBe("montage");
+  });
+  it("Quand un retest hérité (rework sans data) suit un refus puis un pass, alors verification", () => {
+    const j = [e("1", "montage", "done", 0), e("2", "test", "fail", 1), e("3", "test", "rework", 2), e("4", "test", "pass", 3)];
+    expect(deriveCurrentStep(g, j)).toBe("verification");
+  });
+  it("Quand un rework sans data suit un refus, alors l'unité reste au test", () => {
+    const j = [e("1", "montage", "done", 0), e("2", "test", "fail", 1), e("3", "test", "rework", 2)];
+    expect(deriveCurrentStep(g, j)).toBe("test");
+  });
+  it("Quand un renvoi au Montage (rework to=montage) suit un refus, alors montage", () => {
+    const j = [e("1", "montage", "done", 0), e("2", "test", "fail", 1), e("3", "test", "rework", 1, { to: "montage" })];
+    expect(deriveCurrentStep(g, j)).toBe("montage");
+  });
+  it("Quand le Montage est refait après le renvoi, alors test", () => {
+    const j = [e("1", "montage", "done", 0), e("2", "test", "fail", 1), e("3", "test", "rework", 1, { to: "montage" }), e("4", "montage", "done", 2)];
+    expect(deriveCurrentStep(g, j)).toBe("test");
+  });
+  it("Quand le renvoi vise le test, alors les réussites du test et après sont annulées, pas le montage", () => {
+    const j = [e("1", "montage", "done", 0), e("2", "test", "pass", 1), e("3", "verification", "done", 2), e("4", "verification", "rework", 3, { to: "test" })];
+    expect(deriveCurrentStep(g, j)).toBe("test");
+  });
+  it("Quand le renvoi vise une étape absente de la gamme, alors il n'annule rien", () => {
+    const j = [e("1", "montage", "done", 0), e("2", "test", "rework", 1, { to: "emballage" })];
+    expect(deriveCurrentStep(g, j)).toBe("test");
+  });
+  it("Quand le journal arrive dans le désordre (fail/rework au même instant), alors même résultat que trié", () => {
+    const j = [e("4", "montage", "done", 2), e("3", "test", "rework", 1, { to: "montage" }), e("2", "test", "fail", 1), e("1", "montage", "done", 0)];
+    expect(deriveCurrentStep(g, j)).toBe("test");
+  });
+  it("Quand on passe à une gamme sans Test, alors verification", () => {
+    const j = [e("1", "montage", "done", 0), e("2", "test", "fail", 1), e("3", "test", "rework", 2)];
+    expect(deriveCurrentStep(["montage", "verification"], j)).toBe("verification");
+  });
+  it("Quand toutes les étapes sont faites, alors null", () => {
+    const j = [e("1", "montage", "done", 0), e("2", "test", "pass", 1), e("3", "verification", "done", 2)];
+    expect(deriveCurrentStep(g, j)).toBeNull();
+  });
+  it("Quand l'entrée est triée, alors le tableau d'origine n'est pas modifié", () => {
+    const j = [e("2", "test", "pass", 1), e("1", "montage", "done", 0)];
+    deriveCurrentStep(g, j);
+    expect(j.map((x) => x.id)).toEqual(["2", "1"]);
+  });
+});
+
+// #21 (B3, non-bloquant iii) : source unique du badge « Reprise ».
+describe("pendingRework — Étant donné le journal d'une unité (#21)", () => {
+  const at = (ms: number) => new Date(Date.UTC(2026, 9, 20, 10, 0, 0, ms));
+  const ev = (id: string, operationKey: string, result: string, ms: number, data: unknown = null, note: string | null = null) =>
+    ({ id, operationKey, result, createdAt: at(ms), data, note });
+  it("Quand un renvoi existe sans aucun done Montage antérieur, alors il est en attente", () => {
+    expect(pendingRework([ev("a", "test", "fail", 1), ev("b", "test", "rework", 2, { to: "montage" }, "rayure")]))
+      .toEqual({ note: "rayure", at: at(2) });
+  });
+  it("Quand le Montage est refait après le renvoi, alors rien en attente", () => {
+    expect(pendingRework([ev("b", "test", "rework", 2, { to: "montage" }), ev("c", "montage", "done", 3)])).toBeNull();
+  });
+  it("Quand un retest hérité (rework sans data.to) existe, alors il n'est pas un renvoi", () => {
+    expect(pendingRework([ev("a", "montage", "done", 1), ev("b", "test", "rework", 2, null, "x")])).toBeNull();
+  });
+  it("Quand le renvoi et le done Montage ont le même instant, alors l'ordre total tranche (done après rework)", () => {
+    expect(pendingRework([ev("z", "montage", "done", 2), ev("a", "test", "rework", 2, { to: "montage" })])).toBeNull();
+  });
+  it("Quand deux renvois se suivent, alors le dernier est rendu, note absente → chaîne vide", () => {
+    expect(pendingRework([
+      ev("a", "test", "rework", 1, { to: "montage" }, "un"), ev("b", "montage", "done", 2), ev("c", "test", "rework", 3, { to: "montage" }),
+    ])).toEqual({ note: "", at: at(3) });
+  });
+});

@@ -95,3 +95,12 @@ describe("textes de la garde de l'atelier (#5)", () => {
     expect(I.en.floorGuardOff).toBe("Shop-floor guard inactive: the shop floor still accepts calls from unregistered screens.");
   });
 });
+
+describe("errorMessage — Étant donné les refus du poste Test (#21)", () => {
+  it("Quand le serveur rend NC_REQUIRED ou REWORK_TARGET_INVALID, alors le texte traduit fr et en", () => {
+    expect(errorMessage("NC_REQUIRED", I.en)).toBe("Reason for failure required");
+    expect(errorMessage("REWORK_TARGET_INVALID", I.en)).toBe("Rework step not in the route");
+    expect(errorMessage("NC_REQUIRED", I.fr)).toBe("Motif du refus obligatoire");
+    expect(errorMessage("REWORK_TARGET_INVALID", I.fr)).toBe("Étape de reprise absente de la gamme");
+  });
+});

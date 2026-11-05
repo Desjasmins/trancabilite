@@ -1,5 +1,6 @@
 import "server-only";
 import { prisma } from "./db";
+import { EVENT_ORDER } from "./process";
 import { toUnitDTO, toBatchDTO, toDeliveryDTO, toOperationDTO, toRouteDTO } from "./mappers";
 import { defaultTemplate, normalizeTemplate } from "./label";
 import type {
@@ -15,7 +16,7 @@ import type {
 
 export async function loadUnits(): Promise<UnitDTO[]> {
   const [rows, kiosks] = await Promise.all([
-    prisma.unit.findMany({ include: { events: true }, orderBy: { dateCreation: "asc" } }),
+    prisma.unit.findMany({ include: { events: { orderBy: EVENT_ORDER } }, orderBy: { dateCreation: "asc" } }),
     // Libellés des écrans (#4) : le journal ne garde que l'id (TraceEvent.stationId).
     prisma.kiosk.findMany({ select: { id: true, label: true } }),
   ]);

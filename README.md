@@ -54,6 +54,10 @@ ne joignent jamais de base : `@/lib/db`, `@/lib/auth` et `next/headers` se bouch
 avec `test/mocks/`, et `test/setup/guard-db.ts` (`setupFiles`) refuse de tourner si `DATABASE_URL`
 ou `DIRECT_URL` vise un autre hôte que `127.0.0.1` ou `localhost`.
 
+Les tests d'intégration (`test/integration/`) ne tournent que si `TEST_PG_URL` vise un
+PostgreSQL **jetable** en Docker (jamais Supabase) ; la procédure est en tête de chaque
+fichier. Lancez-les avec `--no-file-parallelism` : ils vident la même base.
+
 ## Fonctionnalités
 
 ### 🏭 Atelier (opérateurs) — flux 5 postes
@@ -119,6 +123,13 @@ Un admin connecté **sur l'écran lui-même** l'enregistre depuis l'onglet Ateli
 - **Delivery** — livraison (`LIV-AAAA-NNN`).
 - **Operator**, **Settings**, **LabelTemplate** — opérateurs, défauts, gabarit.
 - **Kiosk** — écran d'atelier enregistré (empreinte du jeton, dernière activité, révocation).
+- **TraceEvent** — journal append-only. **Ordre total** (#19) : `compareEvents`
+  (`src/lib/process.ts`) trie par `createdAt`, puis par rang (`fail` < `rework` <
+  `pass`/`done`), puis par `id` ; tout lecteur du journal passe par lui. Deux événements
+  écrits dans une même transaction prennent leur heure **en base** (`dbNow`,
+  `clock_timestamp()`) : `fail` à t, `rework` à t + 1 ms. L'étape courante d'une unité se
+  recalcule avec `deriveCurrentStep` (changement de gamme d'un lot ; les unités bloquées
+  ou livrées ne bougent pas).
 
 ## Notes
 
