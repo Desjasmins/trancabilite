@@ -1,7 +1,8 @@
 "use server";
 
 import { prisma } from "@/lib/db";
-import { EventResult, Prisma } from "@/generated/prisma/client";
+import { Prisma } from "@/generated/prisma/client";
+import { deriveCurrentStep, EVENT_ORDER } from "@/lib/process";
 import { loadUnits, loadBatches } from "@/lib/queries";
 import { nextSerial } from "@/lib/status";
 import { pad } from "@/lib/label";
@@ -83,8 +84,8 @@ async function createBatch(input: unknown): Promise<ActionResult> {
 /**
  * Modifie un lot après coup (PO, projet, référence, sous-traitant, gamme).
  * Les champs copiés sur les unités sont propagés. Si la gamme change, l'étape
- * courante de chaque unité est RECALCULÉE depuis son journal d'événements
- * (première opération de la nouvelle gamme sans événement réussi). Les unités
+ * courante de chaque unité est RECALCULÉE depuis son journal d'événements par
+ * `deriveCurrentStep` (renvois au Montage compris, #19). Les unités
  * bloquées (non conformes) ou déjà livrées ne sont pas déplacées.
  */
 async function updateBatch(input: unknown): Promise<ActionResult> {
@@ -96,7 +97,7 @@ async function updateBatch(input: unknown): Promise<ActionResult> {
     await prisma.$transaction(async (tx) => {
       const batch = await tx.batch.findUnique({
         where: { id: d.batchId },
-        include: { units: { include: { events: true } } },
+        include: { units: { include: { events: { orderBy: EVENT_ORDER } } } },
       });
       if (!batch) throw new BusinessError("Lot introuvable");
 
@@ -138,12 +139,7 @@ async function updateBatch(input: unknown): Promise<ActionResult> {
           sub: d.sub || null,
         };
         if (routeChanged && !u.blocked && !u.deliveryId) {
-          const done = new Set(
-            u.events
-              .filter((e) => e.result === EventResult.done || e.result === EventResult.pass)
-              .map((e) => e.operationKey),
-          );
-          data.currentOperationKey = steps.find((k) => !done.has(k)) ?? null;
+          data.currentOperationKey = deriveCurrentStep(steps, u.events);
           data.version = { increment: 1 };
         }
         await tx.unit.update({ where: { id: u.id }, data });

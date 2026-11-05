@@ -114,7 +114,9 @@ describe("createBatchAction — Étant donné deux créations concurrentes (#7)"
 
 describe("updateBatchAction — figé (#2)", () => {
   const input = { batchId: "B1", po: "", projet: "P2", reference: "R2", sub: "S", routeId: "G2" };
-  const ev = (operationKey: string, result: string) => ({ operationKey, result });
+  let n = 0;
+  const ev = (operationKey: string, result: string, data: unknown = null) =>
+    ({ id: `e${++n}`, operationKey, result, data, createdAt: new Date(Date.UTC(2026, 9, 1, 0, 0, n)) });
   function batchRow(routeId: string) {
     return { id: "B1", routeId, units: [
       { id: "U1", blocked: false, deliveryId: null, events: [ev("assemblage", "done"), ev("test", "fail")] },
@@ -132,7 +134,8 @@ describe("updateBatchAction — figé (#2)", () => {
     db.route.findUnique.mockResolvedValue({ id: "G2", steps });
     expect(await updateBatchAction(input)).toEqual({ ok: true, units: UNITS, batches: BATCHES });
     expect(db.batch.findUnique).toHaveBeenCalledWith({
-      where: { id: "B1" }, include: { units: { include: { events: true } } },
+      where: { id: "B1" },
+      include: { units: { include: { events: { orderBy: [{ createdAt: "asc" }, { id: "asc" }] } } } },
     });
     expect(db.route.findUnique).toHaveBeenCalledWith({ where: { id: "G2" }, include: { steps: true } });
     expect(db.batch.update).toHaveBeenCalledWith({ where: { id: "B1" }, data: { ...copied, routeId: "G2" } });
@@ -168,6 +171,51 @@ describe("updateBatchAction — figé (#2)", () => {
   it("Quand l'erreur n'est pas une Error, alors GENERIC (D15, #3)", async () => {
     db.batch.findUnique.mockRejectedValue("x");
     expect(await updateBatchAction(input)).toEqual({ ok: false, error: "GENERIC" });
+  });
+});
+
+describe("updateBatchAction — Étant donné le journal ordonné (#19)", () => {
+  const input = { batchId: "B1", projet: "P", reference: "R", routeId: "G2" };
+  const g = [{ position: 1, operationKey: "montage" }, { position: 2, operationKey: "test" }, { position: 3, operationKey: "verification" }];
+  const T = Date.UTC(2026, 9, 20);
+  const ev = (id: string, operationKey: string, result: string, s: number, data: unknown = null) =>
+    ({ id, operationKey, result, data, createdAt: new Date(T + s * 1000) });
+  // Renvoi au Montage : fail et rework au même instant, rendus à l'envers par la base.
+  const renvoi = [ev("z", "test", "rework", 1, { to: "montage" }), ev("a", "test", "fail", 1), ev("m", "montage", "done", 0)];
+  const unitRow = (id: string, events: unknown[], over: object = {}) =>
+    ({ id, blocked: false, deliveryId: null, events, ...over });
+
+  it("Quand une unité a été renvoyée au Montage, alors l'étape recalculée est montage (deriveCurrentStep)", async () => {
+    db.batch.findUnique.mockResolvedValue({ id: "B1", routeId: "G1", units: [
+      unitRow("U1", renvoi),
+      unitRow("U2", [ev("m", "montage", "done", 0), ev("a", "test", "fail", 1), ev("r", "test", "rework", 2), ev("p", "test", "pass", 3)]),
+    ] });
+    db.route.findUnique.mockResolvedValue({ id: "G2", steps: g });
+    expect((await updateBatchAction(input)).ok).toBe(true);
+    const keys = db.unit.update.mock.calls.map((c) => c[0].data.currentOperationKey);
+    expect(keys).toEqual(["montage", "verification"]);
+  });
+  it.each([
+    ["bloquée", { blocked: true, currentOperationKey: "test" }],
+    ["livrée", { deliveryId: "L1", currentOperationKey: null }],
+  ])("Quand l'unité est %s, alors ni étape ni version ne changent", async (_l, over) => {
+    db.batch.findUnique.mockResolvedValue({ id: "B1", routeId: "G1", units: [unitRow("U1", renvoi, over)] });
+    db.route.findUnique.mockResolvedValue({ id: "G2", steps: g });
+    expect((await updateBatchAction(input)).ok).toBe(true);
+    const data = db.unit.update.mock.calls[0][0].data;
+    expect(data).not.toHaveProperty("currentOperationKey");
+    expect(data).not.toHaveProperty("version");
+  });
+  it.each([
+    ["sans session", "anonyme", "AUTH_REQUIRED"],
+    ["client", "client", "FORBIDDEN"],
+  ] as const)("Quand l'appel est %s, alors refus côté serveur et aucune écriture (§8)", async (_l, who, code) => {
+    setSession(PROFILES[who].session);
+    const r = await updateBatchAction(input);
+    expect(r.ok).toBe(false);
+    expect(r.error).toBe(code);
+    expect(db.$transaction).not.toHaveBeenCalled();
+    expect(db.unit.update).not.toHaveBeenCalled();
   });
 });
 

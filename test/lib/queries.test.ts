@@ -23,6 +23,8 @@ describe("loadUnits — Étant donné le journal et la table des écrans (#4)", 
     expect(u.montage).toEqual({ par: "Ana", date: "2026-10-02T00:00:00.000Z", ecran: "Établi 2" });
     expect(db.kiosk.findMany).toHaveBeenCalledTimes(1);
     expect(db.kiosk.findMany).toHaveBeenCalledWith({ select: { id: true, label: true } });
-    expect(db.unit.findMany).toHaveBeenCalledWith({ include: { events: true }, orderBy: { dateCreation: "asc" } });
+    expect(db.unit.findMany).toHaveBeenCalledWith({
+      include: { events: { orderBy: [{ createdAt: "asc" }, { id: "asc" }] } }, orderBy: { dateCreation: "asc" },
+    });
   });
 });
