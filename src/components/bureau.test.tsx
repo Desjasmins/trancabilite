@@ -14,7 +14,7 @@ vi.mock("sonner", () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
 vi.mock("./app-context", () => ({ useApp: vi.fn() }));
 vi.mock("./kiosk-panel", () => ({ KioskList: () => <div>liste-des-ecrans</div> }));
 
-import { retestUnitOfficeAction, markPrintedAction } from "@/app/actions";
+import { retestUnitOfficeAction, markPrintedAction, createBatchAction, updateBatchAction } from "@/app/actions";
 import { printLabels } from "@/lib/print";
 import { toast } from "sonner";
 import { useApp } from "./app-context";
@@ -100,5 +100,48 @@ describe("Bureau, fiche d'unité — Étant donné l'écran écrit au journal (#
     vi.mocked(useApp).mockReturnValue({ ...ctx(unit), ui: { bureauTab: "kiosks" } } as never);
     render(<LangProvider><Bureau /></LangProvider>);
     expect(screen.getByText("liste-des-ecrans")).toBeTruthy();
+  });
+});
+
+describe("Bureau, lots — Étant donné une gamme sans poste Test (#20)", () => {
+  const routes = [
+    { id: "R1", name: "Standard", isDefault: true, steps: ["montage", "test", "verification"] },
+    { id: "R2", name: "Sans test", isDefault: false, steps: ["montage", "verification"] },
+  ];
+  const batch = { id: "B1", po: "PO", projet: "P", reference: "A1", sub: "", routeId: "R2" };
+  const ctx = (lang: "fr" | "en" = "fr") => ({
+    units: [{ ...blocked, blocked: false, nc: "" }], batches: [batch], deliveries: [], operations: [], routes,
+    settings: { sub: "", proj: "", ops: [] }, template: defaultTemplate(),
+    ui: { bureauTab: "lots", query: "", filterStatus: "", openId: null, client: false },
+    setUi: vi.fn(), run: vi.fn(async (p: Promise<unknown>) => p), t: I[lang], lang, pending: false, user: null,
+  }) as unknown as ReturnType<typeof useApp>;
+
+  it("Quand la gamme par défaut a un poste Test, alors aucune alerte à la création", () => {
+    vi.mocked(useApp).mockReturnValue(ctx());
+    render(<LangProvider><Bureau /></LangProvider>);
+    expect(screen.queryByText(I.fr.warnNoVisualLot)).toBeNull();
+  });
+
+  it("Quand on choisit la gamme sans Test, alors l'alerte s'affiche et la création est quand même appelée", async () => {
+    vi.mocked(createBatchAction).mockResolvedValue({ ok: true } as never);
+    vi.mocked(useApp).mockReturnValue(ctx());
+    render(<LangProvider><Bureau /></LangProvider>);
+    fireEvent.change(screen.getByDisplayValue("Standard"), { target: { value: "R2" } });
+    expect(screen.getByRole("status").textContent).toBe(I.fr.warnNoVisualLot);
+    fireEvent.change(screen.getByDisplayValue("Sans test"), { target: { value: "R1" } });
+    expect(screen.queryByText(I.fr.warnNoVisualLot)).toBeNull();
+    fireEvent.change(screen.getByDisplayValue("Standard"), { target: { value: "R2" } });
+    fireEvent.click(screen.getByText(I.fr.create));
+    await waitFor(() => expect(createBatchAction).toHaveBeenCalledWith(expect.objectContaining({ routeId: "R2" })));
+  });
+
+  it("Quand on modifie un lot dont la gamme n'a pas de Test, alors l'alerte (en) s'affiche et l'enregistrement est appelé", async () => {
+    vi.mocked(updateBatchAction).mockResolvedValue({ ok: true } as never);
+    vi.mocked(useApp).mockReturnValue(ctx("en"));
+    render(<LangProvider><Bureau /></LangProvider>);
+    fireEvent.click(screen.getByText(I.en.editLot));
+    expect(screen.getAllByText(I.en.warnNoVisualLot)).toHaveLength(1);
+    fireEvent.click(screen.getByText(I.en.save));
+    await waitFor(() => expect(updateBatchAction).toHaveBeenCalledWith(expect.objectContaining({ batchId: "B1", routeId: "R2" })));
   });
 });
