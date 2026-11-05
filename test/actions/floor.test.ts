@@ -7,7 +7,7 @@ vi.mock("next/headers", () => import("../mocks/headers"));
 vi.mock("@/lib/auth", () => import("../mocks/auth"));
 
 import { prisma } from "@/lib/db";
-import { resetDbMock, type PrismaMock } from "../mocks/db";
+import { resetDbMock, DB_NOW, type PrismaMock } from "../mocks/db";
 import { setSession } from "../mocks/auth";
 import { PROFILES } from "../access/profiles";
 import { resetQueriesMock, loadUnits, UNITS } from "./queries-mock";
@@ -112,7 +112,7 @@ describe("confirmMontageBulkAction — figé (#2)", () => {
 });
 
 describe("confirmTestAction — figé (#2)", () => {
-  const base = { unitId: "U1", operator: "Ana", diel: "accept", pol: "accept", eff: "accept", nc: "fissure" };
+  const base = { unitId: "U1", operator: "Ana", diel: "accept", pol: "accept", eff: "accept", visual: "accept", nc: "fissure" };
   it("Quand l'entrée est invalide, alors message Zod non vide", async () => {
     const r = await confirmTestAction({ ...base, diel: "x" });
     expect(r.ok).toBe(false);
@@ -123,7 +123,7 @@ describe("confirmTestAction — figé (#2)", () => {
     expect(await confirmTestAction(base)).toEqual({ ok: true, units: UNITS });
     expect(db.traceEvent.create).toHaveBeenCalledWith({ data: {
       unitId: "U1", operationKey: "test", result: "pass", operator: "Ana",
-      data: { diel: "accept", pol: "accept", eff: "accept" }, note: null, stationId: null,
+      data: { diel: "accept", pol: "accept", eff: "accept", visual: "accept" }, note: null, stationId: null,
     } });
     expect(db.unit.updateMany.mock.calls[0][0].data).toEqual({
       currentOperationKey: "verification", blocked: false, nc: null, version: { increment: 1 },
@@ -137,10 +137,14 @@ describe("confirmTestAction — figé (#2)", () => {
       currentOperationKey: "test", blocked: true, nc: "fissure", version: { increment: 1 },
     });
   });
-  it("Quand refus sans NC, alors nc null", async () => {
-    db.unit.findUnique.mockResolvedValue(unitRow({ currentOperationKey: "test" }));
-    await confirmTestAction({ ...base, pol: "refus", nc: "" });
-    expect(db.unit.updateMany.mock.calls[0][0].data.nc).toBeNull();
+  // #21 : le motif devient obligatoire dès qu'un essai est refusé (ancien contrat « refus sans NC → nc null » retiré).
+  it.each(["diel", "pol", "eff", "visual"])("Quand %s est refusé sans motif, alors refus de l'entrée sans écrire", async (k) => {
+    expect(await confirmTestAction({ ...base, [k]: "refus", nc: "  " })).toEqual({ ok: false, error: "NC_REQUIRED" });
+    expect(db.$transaction).not.toHaveBeenCalled();
+  });
+  it("Quand le visuel manque, alors refus de l'entrée", async () => {
+    expect((await confirmTestAction({ ...base, visual: undefined })).ok).toBe(false);
+    expect(db.$transaction).not.toHaveBeenCalled();
   });
   it("Quand recordOperation lève, alors l'erreur est rendue", async () => {
     db.unit.findUnique.mockResolvedValue(null);
@@ -149,6 +153,115 @@ describe("confirmTestAction — figé (#2)", () => {
   it("Quand l'erreur n'est pas une Error, alors GENERIC (D15, #3)", async () => {
     db.unit.findUnique.mockRejectedValue(1);
     expect(await confirmTestAction(base)).toEqual({ ok: false, error: "GENERIC" });
+  });
+});
+
+// #21 : essai visuel au Test ; un refus visuel renvoie au Montage sans bloquer.
+describe("confirmTestAction — Étant donné l'essai visuel (#21)", () => {
+  const base = { unitId: "U1", operator: "Ana", diel: "accept", pol: "accept", eff: "accept", visual: "accept", nc: "" };
+  const atTest = (over: Record<string, unknown> = {}) => unitRow({ currentOperationKey: "test", ...over });
+
+  it("Quand seul le visuel est refusé, alors fail puis rework vers montage, aux heures t et t + 1 ms, non bloquée, une seule mise à jour", async () => {
+    db.unit.findUnique.mockResolvedValue(atTest());
+    expect(await confirmTestAction({ ...base, visual: "refus", nc: "rayure" })).toEqual({ ok: true, units: UNITS });
+    expect(db.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(db.traceEvent.create).toHaveBeenCalledTimes(2);
+    expect(db.traceEvent.create.mock.calls[0][0]).toEqual({ data: {
+      unitId: "U1", operationKey: "test", result: "fail", operator: "Ana",
+      data: { diel: "accept", pol: "accept", eff: "accept", visual: "refus" }, note: "rayure", stationId: null,
+      createdAt: DB_NOW,
+    } });
+    expect(db.traceEvent.create.mock.calls[1][0]).toEqual({ data: {
+      unitId: "U1", operationKey: "test", result: "rework", operator: "Ana",
+      data: { to: "montage", cause: "visual" }, note: "rayure", stationId: null,
+      createdAt: new Date(DB_NOW.getTime() + 1),
+    } });
+    expect(db.unit.updateMany).toHaveBeenCalledTimes(1);
+    expect(db.unit.updateMany).toHaveBeenCalledWith({
+      where: { id: "U1", version: 3 },
+      data: { currentOperationKey: "montage", blocked: false, nc: "rayure", version: { increment: 1 } },
+    });
+  });
+
+  it("Quand visuel ET électrique sont refusés, alors renvoi au Montage sans blocage (décision de Gedeon), l'échec électrique reste au journal", async () => {
+    db.unit.findUnique.mockResolvedValue(atTest());
+    await confirmTestAction({ ...base, diel: "refus", visual: "refus", nc: "rayure + diel" });
+    expect(db.traceEvent.create.mock.calls.map((c) => c[0].data.result)).toEqual(["fail", "rework"]);
+    expect(db.traceEvent.create.mock.calls[0][0].data.data).toMatchObject({ diel: "refus", visual: "refus" });
+    expect(db.unit.updateMany.mock.calls[0][0].data).toMatchObject({ currentOperationKey: "montage", blocked: false });
+  });
+
+  it("Quand seul un essai électrique est refusé, alors bloquée au Test, un seul événement, sans lire l'heure en base", async () => {
+    db.unit.findUnique.mockResolvedValue(atTest());
+    await confirmTestAction({ ...base, pol: "refus", nc: "inversée" });
+    expect(db.traceEvent.create).toHaveBeenCalledTimes(1);
+    expect(db.$queryRaw).not.toHaveBeenCalled();
+    expect(db.unit.updateMany.mock.calls[0][0].data).toEqual({
+      currentOperationKey: "test", blocked: true, nc: "inversée", version: { increment: 1 },
+    });
+  });
+
+  it("Quand tout est accepté après un renvoi, alors pass et nc remis à null", async () => {
+    db.unit.findUnique.mockResolvedValue(atTest({ nc: "rayure" }));
+    await confirmTestAction(base);
+    expect(db.unit.updateMany.mock.calls[0][0].data).toMatchObject({ currentOperationKey: "verification", nc: null });
+  });
+
+  it("Quand la version a changé pendant un renvoi, alors conflit et la transaction lève (rollback des deux événements)", async () => {
+    db.unit.findUnique.mockResolvedValue(atTest());
+    db.unit.updateMany.mockResolvedValue({ count: 0 });
+    expect(await confirmTestAction({ ...base, visual: "refus", nc: "r" })).toEqual({ ok: false, error: "Conflit de concurrence, réessayez" });
+    await expect(db.$transaction.mock.results[0].value).rejects.toThrow("Conflit de concurrence");
+    expect(loadUnits).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["la gamme n'a pas de montage", [{ position: 1, operationKey: "test" }, { position: 2, operationKey: "verification" }]],
+    ["le montage suit le test", [{ position: 1, operationKey: "test" }, { position: 2, operationKey: "montage" }]],
+    ["l'unité n'a pas de gamme", null],
+  ])("Quand %s, alors refus REWORK_TARGET_INVALID sans écrire", async (_l, steps) => {
+    db.unit.findUnique.mockResolvedValue(atTest({ batch: steps ? { route: { steps } } : null }));
+    expect(await confirmTestAction({ ...base, visual: "refus", nc: "r" })).toEqual({ ok: false, error: "REWORK_TARGET_INVALID" });
+    expect(db.traceEvent.create).not.toHaveBeenCalled();
+    expect(db.unit.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("Quand l'unité est bloquée, alors aucun renvoi possible", async () => {
+    db.unit.findUnique.mockResolvedValue(atTest({ blocked: true }));
+    expect(await confirmTestAction({ ...base, visual: "refus", nc: "r" })).toEqual({ ok: false, error: "Unité bloquée (non conforme)" });
+    expect(db.traceEvent.create).not.toHaveBeenCalled();
+  });
+});
+
+describe("confirmTestAction, refus visuel — session et rôle vérifiés côté serveur (FLOOR_WRITE, #21)", () => {
+  const input = { unitId: "U1", operator: "Ana", diel: "accept", pol: "accept", eff: "accept", visual: "refus", nc: "r" };
+  it.each([
+    ["anonyme", null, "AUTH_REQUIRED"],
+    ["client", PROFILES.client.session, "FORBIDDEN"],
+  ] as const)("Quand un %s appelle avec ACCESS_ENFORCE_FLOOR, alors refus et rien n'est écrit", async (_n, session, code) => {
+    vi.stubEnv("ACCESS_ENFORCE_FLOOR", "true");
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    setSession(session);
+    db.unit.findUnique.mockResolvedValue(unitRow({ currentOperationKey: "test" }));
+    expect(await confirmTestAction(input)).toEqual({ ok: false, error: code });
+    expect(db.$transaction).not.toHaveBeenCalled();
+    expect(db.traceEvent.create).not.toHaveBeenCalled();
+    vi.unstubAllEnvs();
+  });
+  it("Quand un superviseur appelle avec ACCESS_ENFORCE_FLOOR, alors le renvoi passe", async () => {
+    vi.stubEnv("ACCESS_ENFORCE_FLOOR", "true");
+    setSession(PROFILES.superviseur.session);
+    db.unit.findUnique.mockResolvedValue(unitRow({ currentOperationKey: "test" }));
+    expect((await confirmTestAction(input)).ok).toBe(true);
+    vi.unstubAllEnvs();
+  });
+});
+
+describe("confirmMontageAction après renvoi — Étant donné une unité en reprise (#21)", () => {
+  it("Quand le Montage est confirmé, alors nc est remis à null", async () => {
+    db.unit.findUnique.mockResolvedValue(unitRow({ nc: "rayure" }));
+    await confirmMontageAction({ unitId: "U1", operator: "Ana" });
+    expect(db.unit.updateMany.mock.calls[0][0].data).toEqual({ currentOperationKey: "test", blocked: false, nc: null, version: { increment: 1 } });
   });
 });
 
@@ -289,7 +402,7 @@ describe("stationId — Étant donné un écran d'atelier appairé (#4)", () => 
   it.each([
     ["confirmMontageAction", () => confirmMontageAction({ unitId: "U1", operator: "Ana" }), "montage"],
     ["confirmMontageBulkAction", () => confirmMontageBulkAction({ unitIds: ["U1"], operator: "Ana" }), "montage"],
-    ["confirmTestAction", () => confirmTestAction({ unitId: "U1", operator: "Ana", diel: "accept", pol: "accept", eff: "refus", nc: "x" }), "test"],
+    ["confirmTestAction", () => confirmTestAction({ unitId: "U1", operator: "Ana", diel: "accept", pol: "accept", eff: "refus", visual: "accept", nc: "x" }), "test"],
     ["confirmVerifAction", () => confirmVerifAction({ unitId: "U1", operator: "Ana" }), "verification"],
   ])("Quand %s passe, alors l'événement porte stationId = id de l'écran et l'opérateur saisi", async (_n, call, key) => {
     db.unit.findUnique.mockResolvedValue(ok(key));
@@ -325,7 +438,7 @@ describe("stationId falsifié dans l'entrée — Étant donné un client qui env
   const CASES: Array<[string, () => Promise<{ ok: boolean }>, Record<string, unknown>, () => void]> = [
     ["confirmMontageAction", () => confirmMontageAction({ unitId: "U1", operator: "Ana", ...forge }), unitRow(), () => {}],
     ["confirmMontageBulkAction", () => confirmMontageBulkAction({ unitIds: ["U1"], operator: "Ana", ...forge }), unitRow(), () => {}],
-    ["confirmTestAction", () => confirmTestAction({ unitId: "U1", operator: "Ana", diel: "accept", pol: "accept", eff: "accept", nc: "", ...forge }), unitRow({ currentOperationKey: "test" }), () => {}],
+    ["confirmTestAction", () => confirmTestAction({ unitId: "U1", operator: "Ana", diel: "accept", pol: "accept", eff: "accept", visual: "accept", nc: "", ...forge }), unitRow({ currentOperationKey: "test" }), () => {}],
     ["confirmVerifAction", () => confirmVerifAction({ unitId: "U1", operator: "Ana", ...forge }), unitRow({ currentOperationKey: "verification" }), () => {}],
     ["retestUnitAction", () => retestUnitAction({ unitId: "U1", operator: "Ana", note: "r", ...forge }), blocked, () => {}],
     ["retestUnitOfficeAction", () => retestUnitOfficeAction({ unitId: "U1", note: "r", ...forge }), blocked, () => setSession(PROFILES.superviseur.session)],

@@ -82,10 +82,15 @@ export async function recordOperation(
   opts: {
     operator: string;
     result: EventResult;
-    data?: unknown;
+    data?: Prisma.InputJsonObject;
     note?: string;
     /** Kiosk.id de l'écran appairé (#4) ; null = écran non identifié. */
     stationId?: string | null;
+    /**
+     * Renvoi (#21) : avec un `fail`, écrit aussi un `rework` vers `step` (qui doit précéder
+     * l'étape dans la gamme) et remet l'unité à cette étape, NON bloquée.
+     */
+    reworkTo?: { step: string; cause: string };
   },
 ): Promise<void> {
   await prisma.$transaction(async (tx) => {
@@ -105,28 +110,41 @@ export async function recordOperation(
         .map((s) => s.operationKey) ?? [];
 
     const failed = opts.result === EventResult.fail;
-    const next = failed ? unit.currentOperationKey : nextOp(steps, operationKey);
+    const note = opts.note || null;
+    const stationId = opts.stationId ?? null;
+    const base = { unitId, operationKey, operator: opts.operator, note, stationId };
+    const rework = failed ? opts.reworkTo : undefined;
 
-    await tx.traceEvent.create({
-      data: {
-        unitId,
-        operationKey,
-        result: opts.result,
-        operator: opts.operator,
-        data: (opts.data as object) ?? undefined,
-        note: opts.note || null,
-        stationId: opts.stationId ?? null,
-      },
-    });
+    let state: { currentOperationKey: string | null; blocked: boolean; nc: string | null };
+    if (rework) {
+      // Garde de cible (#21, B3) : l'étape de reprise doit précéder l'étape courante.
+      const to = steps.indexOf(rework.step);
+      if (to < 0 || to >= steps.indexOf(operationKey))
+        throw new BusinessError("REWORK_TARGET_INVALID"); // code traduit côté client (#21)
+      // Couple fail → rework horodaté depuis l'heure de la base (#19, B1).
+      const { failAt, reworkAt } = pairTimestamps(await dbNow(tx));
+      await tx.traceEvent.create({
+        data: { ...base, result: EventResult.fail, data: opts.data, createdAt: failAt },
+      });
+      await tx.traceEvent.create({
+        data: { ...base, result: EventResult.rework, data: { to: rework.step, cause: rework.cause }, createdAt: reworkAt },
+      });
+      // La branche « bloquée » ne s'applique pas à un renvoi : la reprise se fait au Montage.
+      state = { currentOperationKey: rework.step, blocked: false, nc: note };
+    } else {
+      await tx.traceEvent.create({
+        data: { ...base, result: opts.result, data: opts.data },
+      });
+      // Échec : bloquée avec sa NC. Réussite (done/pass) : plus de non-conformité, nc remis à null (#21).
+      state = failed
+        ? { currentOperationKey: unit.currentOperationKey, blocked: true, nc: note }
+        : { currentOperationKey: nextOp(steps, operationKey), blocked: false, nc: null };
+    }
 
+    // Une seule mise à jour versionnée : en cas de conflit, la transaction annule tous les événements.
     const upd = await tx.unit.updateMany({
       where: { id: unitId, version: unit.version },
-      data: {
-        currentOperationKey: failed ? unit.currentOperationKey : next,
-        blocked: failed,
-        nc: failed ? opts.note || null : unit.nc,
-        version: { increment: 1 },
-      },
+      data: { ...state, version: { increment: 1 } },
     });
     if (upd.count === 0) throw new BusinessError("Conflit de concurrence, réessayez");
   });

@@ -13,13 +13,16 @@ export type PackError = "UNIT_ALREADY_PACKED" | "UNIT_PACK_CONFLICT";
 export type DeliveryError = "DELIVERY_NOT_FOUND";
 /** S.N. déjà pris pour ce projet et cette référence (contrainte unique, #7). */
 export type BatchError = "SERIAL_TAKEN";
-export type ErrorCode = AccessError | KioskError | PackError | DeliveryError | BatchError | "GENERIC";
+/** Refus du poste Test (#21) : motif manquant, étape de reprise hors gamme. */
+export type TestError = "NC_REQUIRED" | "REWORK_TARGET_INVALID";
+export type ErrorCode = AccessError | KioskError | PackError | DeliveryError | BatchError | TestError | "GENERIC";
 
 const TRANSLATED: readonly string[] = [
   "AUTH_REQUIRED", "FORBIDDEN", "KIOSK_REVOKED", "KIOSK_NOT_FOUND", "KIOSK_LABEL_TAKEN",
   "UNIT_ALREADY_PACKED", "UNIT_PACK_CONFLICT",
   "DELIVERY_NOT_FOUND",
   "SERIAL_TAKEN",
+  "NC_REQUIRED", "REWORK_TARGET_INVALID",
 ] satisfies Array<Exclude<ErrorCode, "GENERIC">>;
 
 /** Texte affiché pour l'erreur d'une action : code traduit, sinon message métier tel quel (D4). */

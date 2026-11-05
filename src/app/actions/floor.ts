@@ -96,15 +96,20 @@ async function retestUnitOffice(input: unknown, actor: Actor): Promise<ActionRes
 async function confirmTest(input: unknown, actor: Actor): Promise<ActionResult> {
   const parsed = confirmTestSchema.safeParse(input);
   if (!parsed.success) return failInvalid(parsed.error);
-  const { unitId, operator, diel, pol, eff, nc } = parsed.data;
-  const rejected = [diel, pol, eff].includes("refus");
+  const { unitId, operator, diel, pol, eff, visual, nc } = parsed.data;
+  const electricFail = [diel, pol, eff].includes("refus");
+  const visualFail = visual === "refus";
+  const rejected = electricFail || visualFail;
   try {
+    // #21 : un refus visuel renvoie au Montage sans bloquer, même avec un échec électrique
+    // (décision de Gedeon) ; l'échec électrique reste dans `data` et l'essai sera refait.
     await recordOperation(unitId, "test", {
       operator,
       result: rejected ? EventResult.fail : EventResult.pass,
-      data: { diel, pol, eff },
+      data: { diel, pol, eff, visual },
       note: rejected ? nc : "",
       stationId: stationOf(actor),
+      reworkTo: visualFail ? { step: "montage", cause: "visual" } : undefined,
     });
     return { ok: true, units: await loadUnits() };
   } catch (e) {
