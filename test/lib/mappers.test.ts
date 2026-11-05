@@ -75,3 +75,26 @@ describe("toUnitDTO — Étant donné un renvoi au Montage par le contrôle visu
     expect(toUnitDTO(unit([e("montage", "done", 0)])).reprise).toBeNull();
   });
 });
+
+describe("toUnitDTO — Étant donné le compteur de reprises (#22)", () => {
+  const e = (result: string, ms: number, data: unknown = null, operationKey = "test") =>
+    ({ id: `${operationKey}-${result}-${ms}`, unitId: "U1", operationKey, result, operator: "Ana", stationId: null,
+      data, note: null, createdAt: new Date(Date.UTC(2026, 9, 20, 10, 0, 0, ms)) });
+  const toMontage = (ms: number) => e("rework", ms, { to: "montage", cause: "visual" });
+  it("Quand aucun renvoi, alors 0", () => {
+    expect(toUnitDTO(unit([e("done", 0, null, "montage"), e("pass", 1, { diel: "accept" })])).reprises).toBe(0);
+  });
+  it("Quand un renvoi au Montage, alors 1, même après le Montage refait", () => {
+    expect(toUnitDTO(unit([e("fail", 1, { visual: "refus" }), toMontage(2), e("done", 3, null, "montage")])).reprises).toBe(1);
+  });
+  it("Quand deux renvois, alors 2 (sans limite)", () => {
+    expect(toUnitDTO(unit([e("fail", 1), toMontage(2), e("fail", 3), toMontage(4)])).reprises).toBe(2);
+  });
+  it("Quand un retest hérité (rework sans data.to), alors il n'est pas compté", () => {
+    expect(toUnitDTO(unit([e("fail", 1), e("rework", 2, null), e("rework", 3, { cause: "x" }), e("rework", 4, { to: "" })])).reprises).toBe(0);
+  });
+  it("Quand fail puis rework, alors les résultats du Test restent ceux du fail (dernier essai réel)", () => {
+    const dto = toUnitDTO(unit([e("fail", 1, { diel: "accept", pol: "accept", eff: "accept", visual: "refus" }), toMontage(2)]));
+    expect(dto.test).toMatchObject({ visual: "refus", diel: "accept" });
+  });
+});

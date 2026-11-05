@@ -123,7 +123,7 @@ export function printSlip(
   if (!arr.length) return { ok: false, message: t.repNone, bad: true };
 
   const dlv = deliveries.find((x) => x.id === deliveryId);
-  const tc = (v: string | null) => (v === "accept" ? "A" : v === "refus" ? "R" : "–");
+  const tc = (v: string | null) => (v === "accept" ? "A" : v === "refus" ? "R" : "—");
   const projets = [...new Set(arr.map((u) => u.projet))].join(", ");
   const pos = [...new Set(arr.map((u) => u.po).filter(Boolean))].join(", ");
   const d = new Date().toLocaleDateString(lang === "fr" ? "fr-CA" : "en-CA");
@@ -132,7 +132,8 @@ export function printSlip(
     .map(
       (u) => `<tr><td>${esc(u.serie)}</td><td>${esc(modele(u))}</td><td>${esc(u.po || "")}</td>
       <td>${esc(u.montage.par || "")}</td><td>${esc(u.test.par || "")}</td><td>${esc(u.verification.par || "")}</td>
-      <td style="text-align:center">${tc(u.test.diel)}</td><td style="text-align:center">${tc(u.test.pol)}</td><td style="text-align:center">${tc(u.test.eff)}</td>
+      <td style="text-align:center">${tc(u.test.diel)}</td><td style="text-align:center">${tc(u.test.pol)}</td><td style="text-align:center">${tc(u.test.eff)}</td><td style="text-align:center">${tc(u.test.visual)}</td>
+      <td style="text-align:center">${u.reprises}</td>
       <td>${t.st[statut(u)]}</td></tr>`,
     )
     .join("");
@@ -141,7 +142,7 @@ export function printSlip(
     <div class="rhead"><div><h1>${t.deliverySlip}</h1><div style="font-size:12pt;margin-top:4px">${esc(deliveryId)}</div>${dlv?.client ? `<div style="font-size:10pt;margin-top:2px">${t.client}: ${esc(dlv.client)}</div>` : ""}</div>
       <div class="rmeta">LIGHTBASE<br>${t.subcontractor}: ${esc(arr[0].sub)}<br>${t.proj}: ${esc(projets)}${pos ? `<br>PO: ${esc(pos)}` : ""}<br>${t.date}: ${d}<br>${arr.length} ${t.units}</div></div>
     <h2 style="font-size:11pt;margin:16px 0 6px;color:#000">${t.reportH}</h2>
-    <table><thead><tr><th>${t.thSerial}</th><th>${t.thModel}</th><th>${t.thPO}</th><th>${t.sigMont}</th><th>${t.sigTest}</th><th>${t.sigVerif}</th><th>${t.diel}</th><th>${t.pol}</th><th>${t.eff}</th><th>${t.thStatus}</th></tr></thead><tbody>${rows}</tbody></table>
+    <table><thead><tr><th>${t.thSerial}</th><th>${t.thModel}</th><th>${t.thPO}</th><th>${t.sigMont}</th><th>${t.sigTest}</th><th>${t.sigVerif}</th><th>${t.diel}</th><th>${t.pol}</th><th>${t.eff}</th><th>${t.visual}</th><th>${t.repReworks}</th><th>${t.thStatus}</th></tr></thead><tbody>${rows}</tbody></table>
     <div class="sig"><div>${t.sigMont}</div><div>${t.sigTest}</div><div>${t.sigVerif}</div></div>
   </div>`;
 
