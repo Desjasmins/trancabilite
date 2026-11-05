@@ -42,6 +42,10 @@ export interface UnitDTO {
     eff: TestResult;
     /** Contrôle visuel (#21) ; null pour un essai antérieur à son introduction. */
     visual: TestResult;
+    /** Id du dernier essai (#23) : sert à demander l'URL de la photo ; null sans essai. */
+    eventId: string | null;
+    /** Une photo de défaut est jointe (#23) ; forcé à false pour tout non-staff (projectSnapshot). */
+    hasPhoto: boolean;
   };
   verification: { par: string | null; date: string | null; ecran: string | null };
   nc: string;

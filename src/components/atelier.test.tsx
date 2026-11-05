@@ -7,15 +7,18 @@ vi.mock("@/app/actions", () => ({
   markPrintedAction: vi.fn(async () => ({ ok: false, error: "GENERIC" })),
   confirmMontageAction: vi.fn(), confirmMontageBulkAction: vi.fn(), retestUnitAction: vi.fn(),
   confirmTestAction: vi.fn(), confirmVerifAction: vi.fn(), packUnitAction: vi.fn(),
-  createDeliveryAction: vi.fn(), closeDeliveryAction: vi.fn(),
+  createDeliveryAction: vi.fn(), closeDeliveryAction: vi.fn(), createDefectPhotoUploadAction: vi.fn(),
 }));
+// #23 : l'envoi au bucket est bouchonné (aucun réseau) ; les règles de fichier restent réelles.
+vi.mock("@/lib/photo", async (orig) => ({ ...(await orig<typeof import("@/lib/photo")>()), putPhoto: vi.fn() }));
 vi.mock("@/lib/print", () => ({ printLabels: vi.fn(async () => ({ ok: true, message: "envoyé" })), printSlip: vi.fn() }));
 vi.mock("@/lib/usb", () => ({ connectUSB: vi.fn(), isUsbConnected: () => false }));
 vi.mock("sonner", () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
 vi.mock("./app-context", () => ({ useApp: vi.fn() }));
 
 import { toast } from "sonner";
-import { markPrintedAction, confirmTestAction } from "@/app/actions";
+import { markPrintedAction, confirmTestAction, createDefectPhotoUploadAction } from "@/app/actions";
+import { putPhoto } from "@/lib/photo";
 import { useApp } from "./app-context";
 import { Atelier } from "./atelier";
 import { LangProvider } from "./lang-provider";
@@ -173,5 +176,111 @@ describe("i18n — Étant donné les textes du contrôle visuel (#21)", () => {
     const flat = (o: object, p = ""): string[] => Object.entries(o).flatMap(([k, v]) =>
       v && typeof v === "object" ? flat(v, `${p}${k}.`) : [`${p}${k}`]);
     expect(flat(I.en).sort()).toEqual(flat(I.fr).sort());
+  });
+});
+
+describe("Atelier, poste Test — Étant donné une photo de défaut (#23)", () => {
+  afterEach(() => vi.clearAllMocks());
+  const PATH = "units/U1/1f0e.jpg";
+  const file = (type = "image/jpeg", size = 1000) => {
+    const f = new File(["x"], "defaut.jpg", { type });
+    Object.defineProperty(f, "size", { value: size });
+    return f;
+  };
+  const choose = (f: File) => fireEvent.change(screen.getByLabelText(I.fr.photoAdd), { target: { files: [f] } });
+  const refus = () => mount("test", [unitAt("test")], { scanUnit: "U1", pendingTest: all("refus") });
+
+  it("Quand le visuel n'est pas refusé, alors aucun champ photo", () => {
+    mount("test", [unitAt("test")], { scanUnit: "U1", pendingTest: all("accept", "refus") });
+    expect(screen.queryByText(I.fr.photoAdd)).toBeNull();
+  });
+  it("Quand le visuel est refusé, alors « Ajouter une photo » (facultatif), prise par la caméra arrière", () => {
+    refus();
+    expect(screen.getByText(I.fr.photoAdd)).toBeTruthy();
+    expect(screen.getByText(I.fr.photoOptional)).toBeTruthy();
+    const input = screen.getByLabelText(I.fr.photoAdd) as HTMLInputElement;
+    expect(input.getAttribute("capture")).toBe("environment");
+    expect(input.accept).toBe("image/jpeg,image/png,image/webp,image/heic");
+  });
+  it("Quand le bouton est touché, alors le sélecteur de fichier s'ouvre", () => {
+    refus();
+    const input = screen.getByLabelText(I.fr.photoAdd) as HTMLInputElement;
+    const click = vi.spyOn(input, "click");
+    fireEvent.click(screen.getByText(I.fr.photoAdd));
+    expect(click).toHaveBeenCalled();
+  });
+  it("Quand la photo est envoyée, alors « Photo jointe » et confirmTest porte photoPath", async () => {
+    vi.mocked(createDefectPhotoUploadAction).mockResolvedValue({ ok: true, upload: { path: PATH, url: "http://127.0.0.1:54399/u" } });
+    vi.mocked(putPhoto).mockResolvedValue(true);
+    const run = refus();
+    choose(file());
+    await waitFor(() => expect(screen.getByText(I.fr.photoAttached)).toBeTruthy());
+    expect(createDefectPhotoUploadAction).toHaveBeenCalledWith({ unitId: "U1", type: "image/jpeg" });
+    expect(putPhoto).toHaveBeenCalledWith("http://127.0.0.1:54399/u", expect.any(File));
+    expect(screen.getByText(I.fr.photoRetake)).toBeTruthy();
+    fireEvent.change(screen.getByPlaceholderText(I.fr.ncNote), { target: { value: "rayure" } });
+    fireEvent.click(screen.getByText(I.fr.confirmTest));
+    await waitFor(() => expect(run).toHaveBeenCalled());
+    expect(confirmTestAction).toHaveBeenCalledWith(expect.objectContaining({ visual: "refus", photoPath: PATH }));
+  });
+  it("Quand la photo est retirée, alors confirmTest part sans photoPath", async () => {
+    vi.mocked(createDefectPhotoUploadAction).mockResolvedValue({ ok: true, upload: { path: PATH, url: "u" } });
+    vi.mocked(putPhoto).mockResolvedValue(true);
+    const run = refus();
+    choose(file());
+    await waitFor(() => screen.getByText(I.fr.photoRemove));
+    fireEvent.click(screen.getByText(I.fr.photoRemove));
+    expect(screen.getByText(I.fr.photoAdd)).toBeTruthy();
+    fireEvent.change(screen.getByPlaceholderText(I.fr.ncNote), { target: { value: "rayure" } });
+    fireEvent.click(screen.getByText(I.fr.confirmTest));
+    await waitFor(() => expect(run).toHaveBeenCalled());
+    expect(vi.mocked(confirmTestAction).mock.calls[0][0]).not.toHaveProperty("photoPath");
+  });
+  it("Quand le fichier dépasse 5 Mo, alors toast « trop lourde », rien n'est envoyé", () => {
+    refus();
+    choose(file("image/jpeg", 5 * 1024 * 1024 + 1));
+    expect(toast.error).toHaveBeenCalledWith(I.fr.photoTooBig);
+    expect(createDefectPhotoUploadAction).not.toHaveBeenCalled();
+  });
+  it("Quand le format n'est pas accepté, alors toast de format, rien n'est envoyé", () => {
+    refus();
+    choose(file("image/gif"));
+    expect(toast.error).toHaveBeenCalledWith(I.fr.photoBadType);
+    expect(createDefectPhotoUploadAction).not.toHaveBeenCalled();
+  });
+  it("Quand aucun fichier n'est choisi, alors rien", () => {
+    refus();
+    fireEvent.change(screen.getByLabelText(I.fr.photoAdd), { target: { files: [] } });
+    expect(createDefectPhotoUploadAction).not.toHaveBeenCalled();
+  });
+  it("Quand le serveur refuse l'envoi, alors son code traduit, pas de photo jointe", async () => {
+    vi.mocked(createDefectPhotoUploadAction).mockResolvedValue({ ok: false, error: "PHOTO_UNAVAILABLE" });
+    refus();
+    choose(file());
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith(I.fr.errors.PHOTO_UNAVAILABLE));
+    expect(putPhoto).not.toHaveBeenCalled();
+    expect(screen.queryByText(I.fr.photoAttached)).toBeNull();
+  });
+  it("Quand le bucket refuse le fichier, alors « Envoi impossible », pas de photo jointe", async () => {
+    vi.mocked(createDefectPhotoUploadAction).mockResolvedValue({ ok: true, upload: { path: PATH, url: "u" } });
+    vi.mocked(putPhoto).mockResolvedValue(false);
+    refus();
+    choose(file());
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith(I.fr.photoUploadFail));
+    expect(screen.queryByText(I.fr.photoAttached)).toBeNull();
+  });
+  it("Quand l'action lève (réseau), alors « Envoi impossible »", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.mocked(createDefectPhotoUploadAction).mockRejectedValue(new Error("down"));
+    refus();
+    choose(file());
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith(I.fr.photoUploadFail));
+  });
+  it("Les textes photo existent en fr et en en", () => {
+    for (const k of ["photoAdd", "photoOptional", "photoRetake", "photoRemove", "photoTooBig", "photoBadType", "photoUploadFail", "photoSending", "photoAttached", "photoView"] as const) {
+      expect(I.fr[k]).toBeTruthy();
+      expect(I.en[k]).toBeTruthy();
+      expect(I.en[k]).not.toBe(I.fr[k]);
+    }
   });
 });

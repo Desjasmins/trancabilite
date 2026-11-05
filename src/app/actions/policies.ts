@@ -16,6 +16,8 @@ export const POLICIES = {
   saveSettingsAction: "STAFF_WRITE",
   saveTemplateAction: "STAFF_WRITE",
   retestUnitOfficeAction: "STAFF_WRITE",
+  // Photo de défaut (#23, B5) : lecture staff seulement ; le handler refuse aussi le client sur écran.
+  getDefectPhotoUrlAction: "STAFF_WRITE",
   // Atelier (#5) : écran appairé ou admin/superviseur. Le poste Étiquettes crée les lots (NB8, tranché).
   createBatchAction: "FLOOR_WRITE",
   markPrintedAction: "FLOOR_WRITE",
@@ -23,6 +25,8 @@ export const POLICIES = {
   confirmMontageBulkAction: "FLOOR_WRITE",
   retestUnitAction: "FLOOR_WRITE",
   confirmTestAction: "FLOOR_WRITE",
+  // Photo de défaut (#23) : envoi depuis le poste Test (décision de Gedeon).
+  createDefectPhotoUploadAction: "FLOOR_WRITE",
   confirmVerifAction: "FLOOR_WRITE",
   packUnitAction: "FLOOR_WRITE",
   createDeliveryAction: "FLOOR_WRITE",

@@ -15,4 +15,5 @@ export {
 export { createDeliveryAction, closeDeliveryAction } from "./deliveries";
 export { saveSettingsAction, saveTemplateAction } from "./settings";
 export { getLiveDataAction } from "./live";
+export { createDefectPhotoUploadAction, getDefectPhotoUrlAction } from "./photos";
 export { pairKioskAction, revokeKioskAction, renameKioskAction, listKiosksAction } from "./kiosks";
