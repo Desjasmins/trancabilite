@@ -18,6 +18,7 @@ import {
 import { saveSettingsAction, markPrintedAction, createBatchAction, updateBatchAction, retestUnitOfficeAction, getDefectPhotoUrlAction } from "@/app/actions";
 import { Button } from "@/components/ui/button";
 import { statut, byId } from "@/lib/status";
+import { routeLacksTest } from "@/lib/process";
 import { reportFailure, errorMessage } from "@/lib/access/errors";
 import { modele } from "@/lib/label";
 import { printLabels, printSlip } from "@/lib/print";
@@ -104,7 +105,7 @@ function ViewReg() {
             <tr>
               {[
                 t.thSerial, t.thModel, t.thProj, t.thPO, t.thDeliv,
-                t.thMont, t.thTest, t.thVerif, t.thTests, t.thStatus, t.thDate,
+                t.thMont, t.thTest, t.thVerif, t.thTests, t.visual, t.thStatus, t.thDate,
               ].map((h, i) => (
                 <th
                   key={i}
@@ -141,6 +142,10 @@ function ViewReg() {
                       </span>
                     </td>
                     <td className="border-b border-line px-3 py-2.5">
+                      {/* Essai antérieur au contrôle visuel (#22) : « — ». */}
+                      {u.test.visual ? <TestDot v={u.test.visual} /> : <span className="text-muted-foreground">—</span>}
+                    </td>
+                    <td className="border-b border-line px-3 py-2.5">
                       <StatusChip s={s} />
                     </td>
                     <Td mono muted>
@@ -151,7 +156,7 @@ function ViewReg() {
               })
             ) : (
               <tr>
-                <td colSpan={11} className="px-3 py-8 text-center text-muted-foreground">
+                <td colSpan={12} className="px-3 py-8 text-center text-muted-foreground">
                   —
                 </td>
               </tr>
@@ -264,6 +269,7 @@ function DetailPanel() {
                 <MetaCell k={t.deliv} v={u.livraison || t.none} />
                 <MetaCell k={t.labeledBy} v={u.etiquette.par || t.none} />
                 <MetaCell k={t.created} v={fmt(u.dateCreation, t.none)} />
+                <MetaCell k={t.repReworks} v={t.reworkCount.replace("{n}", String(u.reprises))} />
               </div>
 
               <div className="my-3.5 flex">
@@ -424,6 +430,7 @@ function ViewLots() {
                 {t.create}
               </button>
             </div>
+            <NoTestWarning routeId={routeId} />
           </div>
         </details>
       )}
@@ -492,6 +499,23 @@ function ViewLots() {
         <EmptyState>{t.noLots}</EmptyState>
       )}
     </>
+  );
+}
+
+/** Avertissement non bloquant : la gamme choisie n'a pas de poste Test (#20). */
+function NoTestWarning({ routeId }: { routeId: string }) {
+  const { routes, t } = useApp();
+  const route = routes.find((r) => r.id === routeId);
+  const lacks = !!route && routeLacksTest(route.steps);
+  // Région live toujours montée : seul son contenu change, pour que le changement de gamme soit annoncé.
+  return (
+    <div role="status">
+      {lacks && (
+        <p className="m-0 mt-2 rounded-[9px] border border-amber px-3 py-2 text-sm text-amber">
+          {t.warnNoVisualLot}
+        </p>
+      )}
+    </div>
   );
 }
 
@@ -566,6 +590,7 @@ function LotEditForm({ info, onClose }: { info: BatchDTO; onClose: () => void })
           {t.cancel}
         </button>
       </div>
+      <NoTestWarning routeId={routeId} />
       <p className="m-0 mt-2 text-xs text-muted-foreground">{t.editLotRouteHint}</p>
     </div>
   );
